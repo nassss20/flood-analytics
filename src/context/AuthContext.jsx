@@ -10,6 +10,7 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isFirstTimeLogin, setIsFirstTimeLogin] = useState(false);
 
   const fetchRole = async (userId) => {
     if (!userId) {
@@ -30,6 +31,7 @@ export const AuthProvider = ({ children }) => {
     } else if (!error || error.code === 'PGRST116') {
       // If no row found (PGRST116), default to viewer and create a record
       setUserRole('viewer');
+      setIsFirstTimeLogin(true);
       // Create default viewer role for new users
       await supabase.from('user_roles').insert([{ user_id: userId, role: 'viewer' }]);
     } else {
@@ -69,8 +71,16 @@ export const AuthProvider = ({ children }) => {
     user,
     userRole,
     isAdmin: userRole === 'admin',
-    isEditor: userRole === 'editor' || userRole === 'admin',
+    isEditor: ['editor', 'editor_jkr', 'editor_jkm', 'editor_jps', 'admin'].includes(userRole),
+    canEditRoads: ['editor', 'editor_jkr', 'admin'].includes(userRole),
+    canEditRivers: ['editor', 'editor_jps', 'admin'].includes(userRole),
+    canEditPPS: ['editor', 'editor_jkm', 'admin'].includes(userRole),
+    canViewRoads: ['viewer', 'editor', 'editor_jkr', 'admin'].includes(userRole),
+    canViewRivers: ['viewer', 'editor', 'editor_jps', 'admin'].includes(userRole),
+    canViewPPS: ['viewer', 'editor', 'editor_jkm', 'admin'].includes(userRole),
     isBanned: userRole === 'banned',
+    isFirstTimeLogin,
+    clearFirstTimeLogin: () => setIsFirstTimeLogin(false),
     signOut: () => supabase.auth.signOut(),
   };
 

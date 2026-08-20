@@ -3,8 +3,16 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
   --font-mono: ui-monospace, Consolas, monospace;
+}
+
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.025em;
+  }
 }
 
 body {
@@ -12,6 +20,7 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  @apply bg-gray-50 dark:bg-zinc-950;
 }
 
 /* Ensure the root element takes full height */

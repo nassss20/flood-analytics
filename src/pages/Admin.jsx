@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Trash2, Users, AlertTriangle, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ShieldAlert, Trash2, Users, AlertTriangle, CheckCircle2, AlertCircle, User, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
-import { fetchRoads, updateRoadStatus } from '../lib/arcgisClient';
+import { fetchRoads, fetchRivers, updateFeatureStatus } from '../lib/arcgisClient';
 
 export default function Admin() {
   const [logs, setLogs] = useState([]);
   const [roles, setRoles] = useState([]);
+
+  // Tabs for Logs
+  const [activeLogTab, setActiveLogTab] = useState('roads'); // 'roads', 'rivers', 'pps'
+  
+  const [riverLogs, setRiverLogs] = useState([]);
+  const [ppsLogs, setPpsLogs] = useState([]);
+  const [rivers, setRivers] = useState([]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [statusMsg, setStatusMsg] = useState('');
@@ -41,6 +49,24 @@ export default function Admin() {
         if (logsError) throw logsError;
         setLogs(logsData || []);
 
+        const { data: riverData, error: riverError } = await supabase
+          .from('river_submission_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        
+        if (riverError) throw riverError;
+        setRiverLogs(riverData || []);
+
+        const { data: ppsData, error: ppsError } = await supabase
+          .from('pps_supplies')
+          .select('*')
+          .order('updated_at', { ascending: false })
+          .limit(100);
+        
+        if (ppsError) throw ppsError;
+        setPpsLogs(ppsData || []);
+
         // Fetch user roles
         const { data: rolesData, error: rolesError } = await supabase
           .from('user_roles')
@@ -53,6 +79,8 @@ export default function Admin() {
         // Fetch ArcGIS roads for mapping
         const arcgisRoads = await fetchRoads();
         setRoads(arcgisRoads);
+        const arcgisRivers = await fetchRivers();
+        setRivers(arcgisRivers);
 
       } catch (err) {
         console.error("Failed to load admin data:", err);
@@ -64,13 +92,25 @@ export default function Admin() {
   }, []);
 
   // Filter logs locally
-  const filteredLogs = logs.filter(log => {
-    const matchesSearch = log.road_name?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || log.status === statusFilter;
+  const getActiveLogs = () => {
+    if (activeLogTab === 'roads') return logs;
+    if (activeLogTab === 'rivers') return riverLogs;
+    return ppsLogs;
+  };
+  
+  const filteredLogs = getActiveLogs().filter(log => {
+    const searchTarget = activeLogTab === 'roads' ? log.road_name : 
+                         activeLogTab === 'rivers' ? log.river_name : 
+                         log.pps_name;
+    const matchesSearch = searchTarget?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const logStatus = activeLogTab === 'pps' ? 'All' : log.status; // Disable status filter for PPS or handle differently
+    const matchesStatus = statusFilter === 'All' || logStatus === statusFilter;
     
     let matchesDate = true;
     if (dateFilter) {
-      const logDate = log.created_at ? log.created_at.substring(0, 10) : '';
+      const dateStr = log.created_at || log.updated_at;
+      const logDate = dateStr ? dateStr.substring(0, 10) : '';
       matchesDate = logDate === dateFilter;
     }
     
@@ -118,52 +158,58 @@ export default function Admin() {
 
     try {
       const log = logToDelete;
-      // 1. Find the target road's OBJECTID
-      const targetRoad = roads.find(r => r.Name === log.road_name);
-      if (!targetRoad) {
-        throw new Error("Could not find this road in ArcGIS to revert the status.");
+      
+      if (activeLogTab === 'roads') {
+        const targetRoad = roads.find(r => r.Name === log.road_name);
+        if (!targetRoad) throw new Error("Could not find this road in ArcGIS to revert the status.");
+
+        const { data: previousLogs, error: prevError } = await supabase
+          .from('submission_logs')
+          .select('*').eq('road_name', log.road_name).neq('id', log.id).order('created_at', { ascending: false }).limit(1);
+        if (prevError) throw prevError;
+
+        let attributesToRevert = { DEPTH: null, Status: null, DAMAGE: null };
+        if (previousLogs && previousLogs.length > 0) {
+          const prev = previousLogs[0];
+          attributesToRevert = { DEPTH: prev.depth, Status: prev.status, DAMAGE: prev.damage };
+        }
+        await updateFeatureStatus(targetRoad.layerId, targetRoad.OBJECTID, attributesToRevert);
+        
+        const { error: deleteError } = await supabase.from('submission_logs').delete().eq('id', log.id);
+        if (deleteError) throw deleteError;
+        
+        setLogs(logs.filter(l => l.id !== log.id));
+        showStatus('success', `Log deleted and ArcGIS map reverted for ${log.road_name}`);
+      
+      } else if (activeLogTab === 'rivers') {
+        const targetRiver = rivers.find(r => r.River_Name === log.river_name);
+        if (!targetRiver) throw new Error("Could not find this river in ArcGIS to revert the status.");
+
+        const { data: previousLogs, error: prevError } = await supabase
+          .from('river_submission_logs')
+          .select('*').eq('river_name', log.river_name).neq('id', log.id).order('created_at', { ascending: false }).limit(1);
+        if (prevError) throw prevError;
+
+        let attributesToRevert = { Status: null, Water_Level: null };
+        if (previousLogs && previousLogs.length > 0) {
+          const prev = previousLogs[0];
+          attributesToRevert = { Status: prev.status, Water_Level: prev.water_level };
+        }
+        await updateFeatureStatus(targetRiver.layerId, targetRiver.OBJECTID, attributesToRevert);
+        
+        const { error: deleteError } = await supabase.from('river_submission_logs').delete().eq('id', log.id);
+        if (deleteError) throw deleteError;
+        
+        setRiverLogs(riverLogs.filter(l => l.id !== log.id));
+        showStatus('success', `Log deleted and ArcGIS map reverted for ${log.river_name}`);
+      
+      } else if (activeLogTab === 'pps') {
+        const { error: deleteError } = await supabase.from('pps_supplies').delete().eq('id', log.id);
+        if (deleteError) throw deleteError;
+        
+        setPpsLogs(ppsLogs.filter(l => l.id !== log.id));
+        showStatus('success', `Log deleted successfully for ${log.pps_name}`);
       }
-
-      // 2. Find the PREVIOUS log for this exact road (the one right before this one)
-      const { data: previousLogs, error: prevError } = await supabase
-        .from('submission_logs')
-        .select('*')
-        .eq('road_name', log.road_name)
-        .neq('id', log.id)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (prevError) throw prevError;
-
-      // 3. Revert ArcGIS state
-      let attributesToRevert = {
-        DEPTH: null,
-        Status: null,
-        DAMAGE: null
-      };
-
-      if (previousLogs && previousLogs.length > 0) {
-        const prev = previousLogs[0];
-        attributesToRevert = {
-          DEPTH: prev.depth,
-          Status: prev.status,
-          DAMAGE: prev.damage
-        };
-      }
-
-      await updateRoadStatus(targetRoad.OBJECTID, attributesToRevert);
-
-      // 4. Delete the log from Supabase
-      const { error: deleteError } = await supabase
-        .from('submission_logs')
-        .delete()
-        .eq('id', log.id);
-
-      if (deleteError) throw deleteError;
-
-      // Update local state
-      setLogs(logs.filter(l => l.id !== log.id));
-      showStatus('success', `Log deleted and ArcGIS map reverted for ${log.road_name}`);
 
     } catch (err) {
       console.error(err);
@@ -173,6 +219,7 @@ export default function Admin() {
       setLogToDelete(null);
     }
   };
+
 
   return (
     <div className="w-full max-w-5xl mx-auto pb-10">
@@ -225,30 +272,36 @@ export default function Admin() {
               <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800/50 dark:text-gray-300">
                 <tr>
                   <th scope="col" className="px-6 py-4 font-semibold">User ID</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">Username</th>
                   <th scope="col" className="px-6 py-4 font-semibold">Role</th>
                   <th scope="col" className="px-6 py-4 font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-zinc-800/80">
                 {isLoading ? (
-                  <tr><td colSpan="3" className="p-6 text-center">Loading...</td></tr>
+                  <tr><td colSpan="4" className="p-6 text-center">Loading...</td></tr>
                 ) : roles.map((role) => (
                   <tr key={role.id} className="bg-white dark:bg-zinc-900">
-                    <td className="px-6 py-4 font-mono text-xs">{role.user_id}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-gray-500">{role.user_id}</td>
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{role.username || role.email || '-'}</td>
                     <td className="px-6 py-4">
                       <select
                         value={role.role}
                         onChange={(e) => handleUpdateRole(role.user_id, e.target.value)}
-                        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        disabled={role.user_id === '0875d7d7-3878-40df-9fe6-30a853c677a1'}
+                        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <option value="viewer">Viewer (Read-only)</option>
-                        <option value="editor">Editor (Data Entry)</option>
+                        <option value="editor_jkr">Editor (JKR) - Road Only</option>
+                        <option value="editor_jkm">Editor (JKM) - PPS Only</option>
+                        <option value="editor_jps">Editor (JPS) - Water Level Only</option>
+                        <option value="editor">Editor (All)</option>
                         <option value="admin">Admin (Full Access)</option>
                         <option value="banned">Banned (No Access)</option>
                       </select>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs text-gray-400 italic">Auto-saves on change</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Auto-saved</span>
                     </td>
                   </tr>
                 ))}
@@ -265,6 +318,27 @@ export default function Admin() {
               Manage Submissions (Danger Zone)
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Deleting a log will automatically revert the ArcGIS map to the road's previous state.</p>
+            
+            <div className="flex gap-4 mt-6 border-b border-gray-200 dark:border-zinc-800 pb-0">
+              <button 
+                onClick={() => { setActiveLogTab('roads'); setCurrentPage(1); }}
+                className={`text-sm font-medium px-4 py-2 border-b-2 transition-colors ${activeLogTab === 'roads' ? 'border-red-500 text-red-600 dark:text-red-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'}`}
+              >
+                Road Logs
+              </button>
+              <button 
+                onClick={() => { setActiveLogTab('rivers'); setCurrentPage(1); }}
+                className={`text-sm font-medium px-4 py-2 border-b-2 transition-colors ${activeLogTab === 'rivers' ? 'border-red-500 text-red-600 dark:text-red-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'}`}
+              >
+                River Logs
+              </button>
+              <button 
+                onClick={() => { setActiveLogTab('pps'); setCurrentPage(1); }}
+                className={`text-sm font-medium px-4 py-2 border-b-2 transition-colors ${activeLogTab === 'pps' ? 'border-red-500 text-red-600 dark:text-red-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'}`}
+              >
+                PPS Supplies
+              </button>
+            </div>
           </div>
           
           {/* Filters */}
@@ -320,10 +394,10 @@ export default function Admin() {
               <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800/50 dark:text-gray-300">
                 <tr>
                   <th scope="col" className="px-6 py-4 font-semibold">Date</th>
-                  <th scope="col" className="px-6 py-4 font-semibold">Road</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">{activeLogTab === 'roads' ? 'Road' : activeLogTab === 'rivers' ? 'River' : 'PPS Name'}</th>
                   <th scope="col" className="px-6 py-4 font-semibold">Status</th>
-                  <th scope="col" className="px-6 py-4 font-semibold">Submitter</th>
-                  <th scope="col" className="px-6 py-4 font-semibold text-right">Delete & Revert</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">{activeLogTab === 'pps' ? 'Updated By' : 'Submitter'}</th>
+                  <th scope="col" className="px-6 py-4 font-semibold text-right">{activeLogTab === 'pps' ? 'Delete' : 'Delete & Revert'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-zinc-800/80">
@@ -333,15 +407,39 @@ export default function Admin() {
                   <tr><td colSpan="5" className="p-6 text-center">No logs found matching your filters.</td></tr>
                 ) : paginatedLogs.map((log) => (
                   <tr key={log.id} className="bg-white dark:bg-zinc-900 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">{new Date(log.created_at).toLocaleString('en-MY')}</td>
-                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{log.road_name}</td>
-                    <td className="px-6 py-4">{log.status}</td>
-                    <td className="px-6 py-4 text-xs">{log.submitted_by_email}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{new Date(log.created_at || log.updated_at).toLocaleString('en-MY')}</td>
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{activeLogTab === 'roads' ? log.road_name : activeLogTab === 'rivers' ? log.river_name : log.pps_name}</td>
+                    <td className="px-6 py-4">{activeLogTab === 'pps' ? '-' : log.status}</td>
+                    <td className="px-6 py-4">
+                      {activeLogTab === 'pps' ? (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 text-gray-900 dark:text-white font-medium text-sm">
+                            <User className="w-4 h-4 text-gray-400" />
+                            {log.last_updated_by || '-'}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-gray-500 text-xs">
+                            <Mail className="w-3.5 h-3.5 shrink-0" />
+                            {log.last_updated_email || '-'}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 text-gray-900 dark:text-white font-medium text-sm">
+                            <User className="w-4 h-4 text-gray-400" />
+                            {log.submitted_by_name || '-'}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-gray-500 text-xs">
+                            <Mail className="w-3.5 h-3.5 shrink-0" />
+                            {log.submitted_by_email || '-'}
+                          </div>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <button 
                         onClick={() => setLogToDelete(log)}
                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                        title="Delete this log and revert map"
+                        title="Delete this log"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -407,7 +505,7 @@ export default function Admin() {
                   </div>
                   <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete Submission?</h3>
                   <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-                    Are you sure you want to delete the log for <span className="font-semibold text-gray-900 dark:text-white">{logToDelete.road_name}</span>? This will permanently undo the status change on the live ArcGIS map.
+                    Are you sure you want to delete the log for <span className="font-semibold text-gray-900 dark:text-white">{logToDelete.road_name || logToDelete.river_name || logToDelete.pps_name}</span>? {activeLogTab !== 'pps' && 'This will permanently undo the status change on the live ArcGIS map.'}
                   </p>
                   
                   <div className="flex gap-3 w-full">

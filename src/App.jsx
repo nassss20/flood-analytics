@@ -64,10 +64,10 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 text-gray-900 dark:text-gray-100 flex flex-col font-sans transition-colors duration-200 relative">
+    <div className="min-h-screen text-gray-900 dark:text-gray-100 flex flex-col font-sans transition-colors duration-200 relative">
       
       {/* Premium Ambient Background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0 mix-blend-multiply dark:mix-blend-screen opacity-70 dark:opacity-40 transition-opacity duration-500">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10 mix-blend-multiply dark:mix-blend-screen opacity-70 dark:opacity-40 transition-opacity duration-500">
         <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-blue-400/30 dark:bg-blue-600/30 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }}></div>
         <div className="absolute top-[10%] -right-[10%] w-[60%] h-[60%] rounded-full bg-cyan-400/30 dark:bg-cyan-600/30 blur-[120px] animate-pulse" style={{ animationDuration: '12s', animationDelay: '2s' }}></div>
         <div className="absolute -bottom-[20%] left-[20%] w-[80%] h-[80%] rounded-full bg-blue-300/30 dark:bg-blue-800/30 blur-[120px] animate-pulse" style={{ animationDuration: '10s', animationDelay: '4s' }}></div>
@@ -75,7 +75,7 @@ function App() {
 
       {/* Navigation Bar */}
       {session && (
-        <nav className="border-b border-gray-200/50 dark:border-zinc-800/50 bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl px-4 py-3 flex items-center justify-between sticky top-0 z-50 shadow-sm">
+        <nav className="border-b border-gray-200/50 dark:border-zinc-800/50 bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-sm">
           <div className="flex items-center gap-2">
             <div className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded-xl shadow-inner">
               <Droplets className="text-blue-600 dark:text-blue-400" />
@@ -124,7 +124,7 @@ function App() {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-[1400px] mx-auto p-4 sm:p-6 lg:p-8 relative z-10">
+      <main className="flex-1 w-full max-w-[1400px] mx-auto p-4 sm:p-6 lg:p-8">
         <Routes>
           {/* If already logged in, redirect away from login page */}
           <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />

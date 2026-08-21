@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { useTheme } from 'next-themes';
 import 'leaflet/dist/leaflet.css';
 
 // Remove default leaflet icon styles since we use custom ones
@@ -17,8 +18,10 @@ const coreLocations = [
 const polylinePath = coreLocations.map(loc => loc.pos);
 
 // Create a sharp, fintech-style data node icon
-const createDataNodeIcon = (color = 'blue') => {
-  const outerBorder = color === 'blue' ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.6)]' : 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.6)]';
+const createDataNodeIcon = (color = 'blue', isDark = true) => {
+  const outerBorder = color === 'blue' 
+    ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.6)]' 
+    : 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.6)]';
   const innerFill = color === 'blue' ? 'bg-blue-500' : 'bg-cyan-400';
   
   return L.divIcon({
@@ -73,8 +76,11 @@ const MapAnimator = () => {
 
 export default function BackgroundMap() {
   const [weatherData, setWeatherData] = useState({});
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     // Fetch live weather for the 3 nodes
     const fetchWeather = async () => {
       try {
@@ -94,11 +100,15 @@ export default function BackgroundMap() {
     fetchWeather();
   }, []);
 
+  if (!mounted) return null;
+
+  const isDark = resolvedTheme === 'dark';
+
   return (
-    <div className="fixed inset-0 w-full h-full -z-20 bg-[#0c0d12] pointer-events-auto overflow-hidden group/map">
+    <div className="fixed inset-0 w-full h-full -z-20 bg-gray-100 dark:bg-[#0c0d12] pointer-events-auto overflow-hidden group/map">
       
       {/* Subtle scanline overlay for the fintech feel */}
-      <div className="absolute inset-0 z-10 pointer-events-none opacity-[0.03] bg-[linear-gradient(transparent_50%,rgba(0,0,0,1)_50%)] bg-[length:100%_4px]" />
+      <div className={`absolute inset-0 z-10 pointer-events-none opacity-[0.03] bg-[length:100%_4px] ${isDark ? 'bg-[linear-gradient(transparent_50%,rgba(0,0,0,1)_50%)]' : 'bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.5)_50%)]'}`} />
 
       <MapContainer 
         center={[2.0, 103.3]} 
@@ -113,9 +123,12 @@ export default function BackgroundMap() {
         attributionControl={false}
         className="w-screen h-screen opacity-100"
       >
-        {/* Dark Matter No Labels for abstract fintech look */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
+          key={isDark ? 'dark' : 'light'}
+          url={isDark 
+            ? "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
+            : "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png"
+          }
         />
         
         <MapAnimator />
@@ -124,7 +137,7 @@ export default function BackgroundMap() {
         <Polyline 
           positions={polylinePath} 
           pathOptions={{ color: '#0ea5e9', weight: 2, dashArray: '5, 10', opacity: 0.6 }} 
-          className="animate-pulse" // Simple pulse on the line
+          className="animate-pulse" 
         />
 
         {/* Nodes and Tooltips */}
@@ -132,29 +145,29 @@ export default function BackgroundMap() {
           <Marker 
             key={loc.id} 
             position={loc.pos} 
-            icon={createDataNodeIcon(idx % 2 === 0 ? 'blue' : 'cyan')} 
+            icon={createDataNodeIcon(idx % 2 === 0 ? 'blue' : 'cyan', isDark)} 
           >
             <Tooltip 
               direction="top" 
               offset={[0, -15]} 
               opacity={1}
-              permanent={false} // Only show on hover
-              className="bg-zinc-950 border-2 border-blue-500 rounded-none text-white font-sans text-xs p-2 shadow-2xl before:hidden after:hidden"
+              permanent={false} 
+              className="bg-white dark:bg-zinc-950 border-2 border-blue-500 rounded-none text-gray-900 dark:text-white font-sans text-xs p-2 shadow-2xl before:hidden after:hidden"
             >
               <div className="flex flex-col gap-1 min-w-[120px]">
-                <div className="flex justify-between items-center pb-1 border-b border-zinc-800">
-                  <span className="font-display tracking-widest text-zinc-400 uppercase text-[10px]">Node</span>
-                  <span className="font-semibold text-blue-400">{loc.name}</span>
+                <div className="flex justify-between items-center pb-1 border-b border-gray-200 dark:border-zinc-800">
+                  <span className="font-display tracking-widest text-gray-500 dark:text-zinc-400 uppercase text-[10px]">Node</span>
+                  <span className="font-semibold text-blue-600 dark:text-blue-400">{loc.name}</span>
                 </div>
                 <div className="flex justify-between items-center mt-1">
-                  <span className="text-zinc-500">TEMP</span>
-                  <span className="font-mono text-cyan-400">
+                  <span className="text-gray-500 dark:text-zinc-500">TEMP</span>
+                  <span className="font-mono text-cyan-600 dark:text-cyan-400">
                     {weatherData[loc.id] ? `${weatherData[loc.id].temp}°C` : '--'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-zinc-500">WIND</span>
-                  <span className="font-mono text-blue-400">
+                  <span className="text-gray-500 dark:text-zinc-500">WIND</span>
+                  <span className="font-mono text-blue-600 dark:text-blue-400">
                     {weatherData[loc.id] ? `${weatherData[loc.id].wind}km/h` : '--'}
                   </span>
                 </div>

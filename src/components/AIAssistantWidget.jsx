@@ -8,11 +8,27 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
   const [report, setReport] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [weather, setWeather] = useState([]);
+  const [analysisTime, setAnalysisTime] = useState(null);
+
+  const getWeatherDescription = (code) => {
+    if (code === 0) return 'Clear';
+    if (code === 1 || code === 2 || code === 3) return 'Cloudy';
+    if (code === 45 || code === 48) return 'Fog';
+    if (code >= 51 && code <= 57) return 'Drizzle';
+    if (code === 61) return 'Light rain';
+    if (code === 63) return 'Moderate rain';
+    if (code === 65) return 'Heavy rain';
+    if (code >= 71 && code <= 77) return 'Snow';
+    if (code >= 80 && code <= 82) return 'Rain showers';
+    if (code >= 95) return 'Thunderstorm';
+    return 'Unknown';
+  };
 
   const generateReport = async () => {
     setIsGenerating(true);
     setErrorMsg(null);
     setReport(null);
+    setAnalysisTime(null);
     
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -27,9 +43,9 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
         if (weatherRes.ok) {
           const data = await weatherRes.json();
           weatherDataList = [
-            { location: 'Segamat', temp: data[0].current_weather.temperature, wind: data[0].current_weather.windspeed },
-            { location: 'Kota Tinggi', temp: data[1].current_weather.temperature, wind: data[1].current_weather.windspeed },
-            { location: 'Johor Bahru', temp: data[2].current_weather.temperature, wind: data[2].current_weather.windspeed }
+            { location: 'Segamat', temp: data[0].current_weather.temperature, wind: data[0].current_weather.windspeed, desc: getWeatherDescription(data[0].current_weather.weathercode) },
+            { location: 'Kota Tinggi', temp: data[1].current_weather.temperature, wind: data[1].current_weather.windspeed, desc: getWeatherDescription(data[1].current_weather.weathercode) },
+            { location: 'Johor Bahru', temp: data[2].current_weather.temperature, wind: data[2].current_weather.windspeed, desc: getWeatherDescription(data[2].current_weather.weathercode) }
           ];
           setWeather(weatherDataList);
         }
@@ -37,10 +53,12 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
         console.warn("Failed to fetch weather", e);
       }
 
+      const currentTime = new Date().toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' });
+
       // Step 2: Prepare Internal Data
-      const closedRoads = (roadsData || []).filter(r => r.status !== 'Open').map(r => `${r.road_name} (${r.status}, Depth: ${r.depth}m)`);
-      const dangerousRivers = (riversData || []).filter(r => r.Status === 'Danger' || r.Status === 'Warning').map(r => `${r.River_Name} (${r.Status}, Level: ${r.Water_Level}m)`);
-      const activePPS = (ppsData || []).filter(p => p.Status === 'Open').map(p => `${p.PPS_Name} (Capacity: ${p.Capacity})`);
+      const closedRoads = (roadsData || []).filter(r => r.status !== 'Open').map(r => `${r.road_name} (District: ${r.district || 'Unknown'}, ${r.status}, Depth: ${r.depth}m)`);
+      const dangerousRivers = (riversData || []).filter(r => r.Status === 'Danger' || r.Status === 'Warning').map(r => `${r.River_Name} (District: ${r.District || 'Unknown'}, ${r.Status}, Level: ${r.Water_Level}m)`);
+      const activePPS = (ppsData || []).filter(p => p.Status === 'Open').map(p => `${p.PPS_Name} (District: ${p.District || 'Unknown'}, Capacity: ${p.Capacity})`);
 
       // Step 3: Initialize Gemini
       const genAI = new GoogleGenerativeAI(apiKey);
@@ -50,8 +68,10 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
         You are an AI Flood Crisis Commander for Johor, Malaysia. 
         Your job is to generate a SitRep emphasizing the cross-agency impact between Rivers (JPS), Roads (JKR), and Evacuation Centers (PPS).
         
+        Time of Analysis: ${currentTime}
+
         External Intelligence (Live Weather):
-        ${weatherDataList.length > 0 ? weatherDataList.map(w => `${w.location}: ${w.temp}°C, Wind ${w.wind}km/h`).join(' | ') : 'Weather data unavailable.'}
+        ${weatherDataList.length > 0 ? weatherDataList.map(w => `${w.location}: ${w.desc}, ${w.temp}°C, Wind ${w.wind}km/h`).join(' | ') : 'Weather data unavailable.'}
         
         Internal Intelligence:
         Dangerous Rivers: ${dangerousRivers.length > 0 ? dangerousRivers.join(', ') : 'None'}
@@ -61,21 +81,23 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
         Instructions:
         1. Output exactly 3 bullet points. Do NOT use introductory text. Start immediately with the bullets.
         2. Use very simple, straight-to-the-point vocabulary. Keep it short.
-        3. Explicitly connect the dots: How does the weather/river affect the closed roads, and how does that impact the active PPS?
-        4. Use standard bullet points (-). Do NOT use markdown asterisks (*).
+        3. CRITICAL: Only correlate events (rivers, roads, PPS) if they are in the SAME district or geographically connected. Do NOT connect a flooded river in Kota Tinggi to a road closure in Segamat. If they are in different districts, treat them as separate localized incidents.
+        4. Integrate the weather forecast appropriately into the impact assessment (e.g. "Heavy rain in Segamat is worsening the road closure").
+        5. Use standard bullet points (-). Do NOT use markdown asterisks (*).
       `;
 
       // Step 4: Generate Output
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();
       
+      setAnalysisTime(currentTime);
+      
       await typeText(responseText);
 
     } catch (err) {
       console.error("AI Generation Error:", err);
-      if (err.message && (err.message.includes('503') || err.message.includes('demand'))) {
-        const fallbackText = `- High rainfall across Johor is causing Sungai Muar to reach Danger levels.\n- This river overflow has flooded and closed Jalan Utama (0.5m depth).\n- Supply deliveries to PPS Dewan Serbaguna must be rerouted immediately due to these road closures.`;
-        await typeText(fallbackText);
+      if (err.message && (err.message.includes('503') || err.message.includes('demand') || err.message.includes('quota'))) {
+        setErrorMsg("The AI Intelligence Server is currently experiencing high demand or rate limits. Please wait a moment and try again.");
       } else {
         setErrorMsg(err.message);
       }
@@ -153,7 +175,7 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
                 className="flex items-center gap-4 text-blue-600 dark:text-blue-400"
               >
                 <div className="w-3 h-3 bg-blue-600 dark:bg-blue-500 animate-ping"></div>
-                <span className="text-sm font-mono tracking-widest uppercase">Aggregating telemetry...</span>
+                <span className="text-sm font-mono tracking-widest uppercase">Analyzing situation...</span>
               </motion.div>
             )}
 
@@ -197,15 +219,22 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.5 }}
-                    className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3 border-t border-gray-200 dark:border-zinc-800 pt-4"
+                    className="mt-6 flex flex-col gap-3 border-t border-gray-200 dark:border-zinc-800 pt-4"
                   >
-                    <span className="text-[10px] text-gray-500 font-mono uppercase tracking-widest flex items-center gap-1.5">
-                      <ExternalLink className="w-3 h-3" /> Met. Data
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-gray-500 font-mono uppercase tracking-widest flex items-center gap-1.5">
+                        <ExternalLink className="w-3 h-3" /> Met. Data
+                      </span>
+                      {analysisTime && (
+                        <span className="text-[10px] text-gray-400 font-mono uppercase tracking-widest">
+                          Generated: {analysisTime}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {weather.map(w => (
                         <span key={w.location} className="text-[11px] font-mono text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-zinc-900 px-2 py-1 border border-gray-200 dark:border-zinc-800">
-                          {w.location} {w.temp}°C
+                          {w.location}: {w.desc}, {w.temp}°C
                         </span>
                       ))}
                     </div>

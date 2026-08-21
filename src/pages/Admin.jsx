@@ -490,7 +490,7 @@ export default function Admin() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => !isDeleting && setLogToDelete(null)}
-              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+              className="fixed inset-0 z-40 bg-black/60"
             />
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
               <motion.div

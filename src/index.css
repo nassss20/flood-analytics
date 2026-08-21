@@ -6,6 +6,15 @@
   --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
   --font-display: "Space Grotesk", system-ui, sans-serif;
   --font-mono: ui-monospace, Consolas, monospace;
+  
+  --animate-sonar-ping: sonar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  
+  @keyframes sonar-ping {
+    75%, 100% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+  }
 }
 
 @layer base {

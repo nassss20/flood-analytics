@@ -6,6 +6,8 @@ import { useAuth } from "../context/AuthContext";
 import DataEntryModal from "../components/DataEntryModal";
 import WelcomeModal from "../components/WelcomeModal";
 import AIAssistantWidget from "../components/AIAssistantWidget";
+import ArcGISLeafletMap from "../components/ArcGISLeafletMap";
+import MapDashboardOverlays from "../components/MapDashboardOverlays";
 import { fetchPPS, fetchRivers } from "../lib/arcgisClient";
 
 const renderSupplies = (suppliesString, colorClass) => {
@@ -53,6 +55,13 @@ export default function Dashboard() {
   const [riverLogs, setRiverLogs] = useState([]);
   const [isLoadingRiverLogs, setIsLoadingRiverLogs] = useState(true);
 
+  // Defect Logs State
+  const [defectLogs, setDefectLogs] = useState([]);
+  const [isLoadingDefectLogs, setIsLoadingDefectLogs] = useState(true);
+
+  // Map Mode State
+  const [mapMode, setMapMode] = useState('flood'); // 'flood' or 'defects'
+
   // PPS State
   const [ppsData, setPpsData] = useState([]);
   const [isLoadingPps, setIsLoadingPps] = useState(true);
@@ -62,6 +71,9 @@ export default function Dashboard() {
   const [isLoadingRivers, setIsLoadingRivers] = useState(true);
   const [riversSubTab, setRiversSubTab] = useState('live'); // 'live' or 'updates'
   const [refreshRiversTrigger, setRefreshRiversTrigger] = useState(0);
+
+  // Map Selection State
+  const [selectedFeature, setSelectedFeature] = useState(null);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -167,6 +179,42 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Load Defect Logs
+  useEffect(() => {
+    async function fetchDefectLogs() {
+      try {
+        const { data, error } = await supabase
+          .from('road_defects_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) {
+          console.warn("Road defects logs table might not exist yet:", error);
+          return;
+        }
+        setDefectLogs(data || []);
+      } catch (err) {
+        console.error("Error fetching defect logs:", err);
+      } finally {
+        setIsLoadingDefectLogs(false);
+      }
+    }
+
+    fetchDefectLogs();
+
+    const subscription = supabase
+      .channel('public:road_defects_logs')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'road_defects_logs' }, payload => {
+        setDefectLogs(current => [payload.new, ...current].slice(0, 50));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, []);
+
   // Load PPS Data
   useEffect(() => {
     async function loadPpsData() {
@@ -261,6 +309,18 @@ export default function Dashboard() {
     return matchesSearch && matchesStatus && matchesDate;
   });
 
+  // Filter Defect Logs locally
+  const filteredDefectLogs = defectLogs.filter(log => {
+    const matchesSearch = log.road_name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'All' || log.status === statusFilter;
+    let matchesDate = true;
+    if (dateFilter) {
+      const logDate = log.created_at ? log.created_at.substring(0, 10) : '';
+      matchesDate = logDate === dateFilter;
+    }
+    return matchesSearch && matchesStatus && matchesDate;
+  });
+
   // Filter PPS Data
   const filteredPps = ppsData.filter(pps => {
     const matchesSearch = (pps.PPS_Name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -291,8 +351,9 @@ export default function Dashboard() {
 
   const totalPages = Math.ceil(
     (activeTab === 'roads' ? filteredLogs.length :
-      activeTab === 'pps' ? filteredPps.length :
-        riversSubTab === 'updates' ? filteredRiverLogs.length : filteredRivers.length) / rowsPerPage
+      activeTab === 'road_defects' ? filteredDefectLogs.length :
+        activeTab === 'pps' ? filteredPps.length :
+          riversSubTab === 'updates' ? filteredRiverLogs.length : filteredRivers.length) / rowsPerPage
   );
 
   useEffect(() => {
@@ -301,6 +362,7 @@ export default function Dashboard() {
 
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedLogs = filteredLogs.slice(startIndex, startIndex + rowsPerPage);
+  const paginatedDefectLogs = filteredDefectLogs.slice(startIndex, startIndex + rowsPerPage);
   const paginatedPps = filteredPps.slice(
     (currentPage - 1) * rowsPerPage,
     currentPage * rowsPerPage
@@ -326,11 +388,38 @@ export default function Dashboard() {
       <div className="flex justify-between items-center mb-2">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Dashboard Overview</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Live flood status and road accessibility in Johor.</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Flood status and road accessibility in Johor.</p>
+        </div>
+        <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-1 border border-gray-200 dark:border-zinc-700 shadow-sm">
+          <button
+            onClick={() => { setMapMode('flood'); if (activeTab === 'road_defects') setActiveTab('roads'); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mapMode === 'flood' ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+          >
+            <Droplets className="w-4 h-4" />
+            Flood Status
+          </button>
+          <button
+            onClick={() => { setMapMode('defects'); if (activeTab === 'roads') setActiveTab('road_defects'); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mapMode === 'defects' ? 'bg-white dark:bg-zinc-700 text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            Road Defects
+          </button>
         </div>
       </div>
 
-      <div className="w-full flex-1 min-h-[750px] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-lg overflow-hidden relative">
+      <div className="w-full flex-1 min-h-[65vh] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-lg overflow-hidden relative">
+        <ArcGISLeafletMap roadsLogs={logs} defectLogs={defectLogs} selectedFeature={selectedFeature} mapMode={mapMode} />
+        <MapDashboardOverlays
+          roadsLogs={logs}
+          defectLogs={defectLogs}
+          ppsData={ppsData}
+          riversData={riversData}
+          onFeatureSelect={setSelectedFeature}
+          mapMode={mapMode}
+        />
+
+        {/*
         <div className="absolute inset-0 bg-gray-50 dark:bg-zinc-900/50 flex flex-col items-center justify-center -z-10">
           <Map className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3 animate-pulse" />
           <p className="text-gray-500 dark:text-gray-400 font-medium">Loading Map Data...</p>
@@ -341,6 +430,7 @@ export default function Dashboard() {
           title="ArcGIS Dashboard"
           allowFullScreen
         />
+        */}
       </div>
 
       <div className="mt-6">
@@ -353,23 +443,35 @@ export default function Dashboard() {
         {/* Tabs */}
         <div className="flex border-b border-gray-200 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900/50 pt-2 px-6 gap-6">
           {canViewRoads && (
-            <button
-              onClick={() => setActiveTab('roads')}
-              className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'roads'
+            <>
+              <button
+                onClick={() => { setActiveTab('roads'); setMapMode('flood'); }}
+                className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'roads'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                }`}
-            >
-              <Navigation className="w-4 h-4" />
-              Road Updates
-            </button>
+                  }`}
+              >
+                <Navigation className="w-4 h-4" />
+                Road Flood Updates
+              </button>
+              <button
+                onClick={() => { setActiveTab('road_defects'); setMapMode('defects'); }}
+                className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'road_defects'
+                  ? 'border-orange-500 text-orange-600 dark:text-orange-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                  }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Road Defects
+              </button>
+            </>
           )}
           {canViewPPS && (
             <button
               onClick={() => { setActiveTab('pps'); setStatusFilter('All'); setCurrentPage(1); }}
               className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'pps'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                 }`}
             >
               <Tent className="w-4 h-4" />
@@ -380,8 +482,8 @@ export default function Dashboard() {
             <button
               onClick={() => { setActiveTab('rivers'); setStatusFilter('All'); setCurrentPage(1); }}
               className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'rivers'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                 }`}
             >
               <Droplets className="w-4 h-4" />
@@ -395,7 +497,9 @@ export default function Dashboard() {
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
               {activeTab === 'roads' ? (
-                <><Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Data Entry History</>
+                <><Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Flood Data Entry History</>
+              ) : activeTab === 'road_defects' ? (
+                <><AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400" /> Road Defects History</>
               ) : activeTab === 'pps' ? (
                 <><Package className="w-5 h-5 text-purple-600 dark:text-purple-400" /> Pusat Pemindahan Sementara (PPS)</>
               ) : (
@@ -405,9 +509,11 @@ export default function Dashboard() {
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {activeTab === 'roads'
                 ? "Recent flood status updates submitted through the portal."
-                : activeTab === 'pps'
-                  ? "Live logistics and supply status for all evacuation centers."
-                  : "Live telemetry and status for monitored rivers."
+                : activeTab === 'road_defects'
+                  ? "Recent road defect logs submitted by JKR."
+                  : activeTab === 'pps'
+                    ? "Live logistics and supply status for all evacuation centers."
+                    : "Live telemetry and status for monitored rivers."
               }
             </p>
           </div>
@@ -426,7 +532,7 @@ export default function Dashboard() {
             <input
               type="text"
               placeholder={
-                activeTab === 'roads'
+                activeTab === 'roads' || activeTab === 'road_defects'
                   ? "Search by road name..."
                   : activeTab === 'pps'
                     ? "Search by PPS name or district..."
@@ -451,6 +557,11 @@ export default function Dashboard() {
                   <option value="Closed">Closed</option>
                   <option value="Pending Assessment">Pending Assessment</option>
                 </>
+              ) : activeTab === 'road_defects' ? (
+                <>
+                  <option value="Ongoing">Ongoing</option>
+                  <option value="Completed">Completed</option>
+                </>
               ) : activeTab === 'pps' ? (
                 <>
                   <option value="Standby">Standby</option>
@@ -467,7 +578,7 @@ export default function Dashboard() {
               )}
             </select>
           </div>
-          {activeTab === 'roads' && (
+          {(activeTab === 'roads' || activeTab === 'road_defects') && (
             <div className="w-full sm:w-auto">
               <input
                 type="date"
@@ -516,7 +627,14 @@ export default function Dashboard() {
                   </tr>
                 ) : (
                   paginatedLogs.map((log) => (
-                    <tr key={log.id} className="bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                    <tr
+                      key={log.id}
+                      onClick={() => {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        setSelectedFeature({ type: 'road', name: log.road_name, district: log.district, ts: Date.now() });
+                      }}
+                      className="bg-white dark:bg-zinc-900 hover:bg-blue-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-gray-300 font-medium">
                         {formatDate(log.created_at)}
                       </td>
@@ -533,9 +651,9 @@ export default function Dashboard() {
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${log.status === 'Open' ? 'bg-green-50 text-green-700 border-green-200' :
-                            log.status === 'Closed' ? 'bg-red-50 text-red-700 border-red-200' :
-                              log.status === 'Heavy Vehicles Only' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                                'bg-orange-50 text-orange-700 border-orange-200'
+                          log.status === 'Closed' ? 'bg-red-50 text-red-700 border-red-200' :
+                            log.status === 'Heavy Vehicles Only' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                              'bg-orange-50 text-orange-700 border-orange-200'
                           }`}>
                           {log.status || 'Unknown'}
                         </span>
@@ -549,6 +667,97 @@ export default function Dashboard() {
                         ) : '-'}
                       </td>
                       <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 text-gray-900 dark:text-white font-medium text-sm">
+                            <User className="w-4 h-4 text-gray-400" />
+                            {log.submitted_by_name}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-gray-500 text-xs">
+                            <Mail className="w-3.5 h-3.5" />
+                            {log.submitted_by_email}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          ) : activeTab === 'road_defects' ? (
+            <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+              <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800/50 dark:text-gray-300">
+                <tr>
+                  <th scope="col" className="px-6 py-4 font-semibold">Timestamp</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">Road Name</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">Defect Status</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">Defect Types</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">Defect Causes</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">Notes</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">Submitted By</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-zinc-800/80">
+                {isLoadingDefectLogs ? (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-8 text-center">Loading defects...</td>
+                  </tr>
+                ) : paginatedDefectLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-12 text-center text-gray-500">No defect entries found</td>
+                  </tr>
+                ) : (
+                  paginatedDefectLogs.map((log) => (
+                    <tr
+                      key={log.id}
+                      onClick={() => {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        setSelectedFeature({ type: 'road', name: log.road_name, district: log.district, ts: Date.now() });
+                      }}
+                      className="bg-white dark:bg-zinc-900 hover:bg-orange-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-gray-300 font-medium">
+                        {formatDate(log.created_at)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2 text-gray-900 dark:text-white font-medium">
+                          <Navigation className="w-4 h-4 text-cyan-500" />
+                          {log.road_name}
+                        </div>
+                        {log.district && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-6">
+                            District: {log.district}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${log.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' :
+                          'bg-orange-50 text-orange-700 border-orange-200'
+                          }`}>
+                          {log.status || 'Ongoing'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        {log.defect_types && log.defect_types.length > 0 ? (
+                          <ul className="list-disc pl-4 text-xs">
+                            {log.defect_types.filter(t => t !== 'Others (Lain-lain)').map((t, i) => <li key={i}>{t}</li>)}
+                            {log.other_defect_type && <li>{log.other_defect_type}</li>}
+                          </ul>
+                        ) : '-'}
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        {log.defect_causes && log.defect_causes.length > 0 ? (
+                          <ul className="list-disc pl-4 text-xs">
+                            {log.defect_causes.filter(c => c !== 'Others (Lain-lain)').map((c, i) => <li key={i}>{c}</li>)}
+                            {log.other_defect_cause && <li>{log.other_defect_cause}</li>}
+                          </ul>
+                        ) : '-'}
+                      </td>
+                      <td className="px-6 py-4 align-top max-w-[150px]">
+                        {log.notes ? (
+                          <div className="text-xs italic text-gray-500 truncate whitespace-normal">"{log.notes}"</div>
+                        ) : '-'}
+                      </td>
+                      <td className="px-6 py-4 align-top">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-1.5 text-gray-900 dark:text-white font-medium text-sm">
                             <User className="w-4 h-4 text-gray-400" />
@@ -588,7 +797,14 @@ export default function Dashboard() {
                   </tr>
                 ) : (
                   paginatedPps.map((pps, idx) => (
-                    <tr key={pps.OBJECTID || idx} className="bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                    <tr
+                      key={pps.OBJECTID || idx}
+                      onClick={() => {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        setSelectedFeature({ type: 'pps', name: pps.PPS_Name, ts: Date.now() });
+                      }}
+                      className="bg-white dark:bg-zinc-900 hover:bg-blue-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+                    >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-900 dark:text-white font-medium">
                           <Tent className="w-4 h-4 text-purple-500" />
@@ -600,9 +816,9 @@ export default function Dashboard() {
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${pps.Status === 'Standby' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                            pps.Status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' :
-                              pps.Status === 'Closed' ? 'bg-red-50 text-red-700 border-red-200' :
-                                'bg-gray-50 text-gray-700 border-gray-200'
+                          pps.Status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' :
+                            pps.Status === 'Closed' ? 'bg-red-50 text-red-700 border-red-200' :
+                              'bg-gray-50 text-gray-700 border-gray-200'
                           }`}>
                           {pps.Status || 'Unknown'}
                         </span>
@@ -673,7 +889,14 @@ export default function Dashboard() {
                       </tr>
                     ) : (
                       paginatedRivers.map((river, idx) => (
-                        <tr key={river.OBJECTID || idx} className="bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                        <tr
+                          key={river.OBJECTID || idx}
+                          onClick={() => {
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            setSelectedFeature({ type: 'river', name: river.River_Name, ts: Date.now() });
+                          }}
+                          className="bg-white dark:bg-zinc-900 hover:bg-blue-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+                        >
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-gray-900 dark:text-white font-medium">
                               <Droplets className="w-4 h-4 text-cyan-500" />
@@ -691,10 +914,10 @@ export default function Dashboard() {
                           </td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${river.Status === 'Normal' ? 'bg-green-50 text-green-700 border-green-200' :
-                                river.Status === 'Alert' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                                  river.Status === 'Warning' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                    river.Status === 'Danger' ? 'bg-red-50 text-red-700 border-red-200' :
-                                      'bg-gray-50 text-gray-700 border-gray-200'
+                              river.Status === 'Alert' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                river.Status === 'Warning' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                  river.Status === 'Danger' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    'bg-gray-50 text-gray-700 border-gray-200'
                               }`}>
                               {river.Status || 'Unknown'}
                             </span>
@@ -734,7 +957,14 @@ export default function Dashboard() {
                       </tr>
                     ) : (
                       paginatedRiverLogs.map((log) => (
-                        <tr key={log.id} className="bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                        <tr
+                          key={log.id}
+                          onClick={() => {
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            setSelectedFeature({ type: 'river', name: log.river_name, ts: Date.now() });
+                          }}
+                          className="bg-white dark:bg-zinc-900 hover:bg-blue-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+                        >
                           <td className="px-6 py-4 whitespace-nowrap text-gray-900 dark:text-gray-300 font-medium">
                             {formatDate(log.created_at)}
                           </td>
@@ -751,10 +981,10 @@ export default function Dashboard() {
                           </td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${log.status === 'Normal' ? 'bg-green-50 text-green-700 border-green-200' :
-                                log.status === 'Alert' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                                  log.status === 'Warning' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                    log.status === 'Danger' ? 'bg-red-50 text-red-700 border-red-200' :
-                                      'bg-gray-50 text-gray-700 border-gray-200'
+                              log.status === 'Alert' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                log.status === 'Warning' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                  log.status === 'Danger' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    'bg-gray-50 text-gray-700 border-gray-200'
                               }`}>
                               {log.status || 'Unknown'}
                             </span>

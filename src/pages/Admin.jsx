@@ -9,10 +9,11 @@ export default function Admin() {
   const [roles, setRoles] = useState([]);
 
   // Tabs for Logs
-  const [activeLogTab, setActiveLogTab] = useState('roads'); // 'roads', 'rivers', 'pps'
+  const [activeLogTab, setActiveLogTab] = useState('roads'); // 'roads', 'rivers', 'pps', 'defects'
   
   const [riverLogs, setRiverLogs] = useState([]);
   const [ppsLogs, setPpsLogs] = useState([]);
+  const [defectLogs, setDefectLogs] = useState([]);
   const [rivers, setRivers] = useState([]);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -67,6 +68,18 @@ export default function Admin() {
         if (ppsError) throw ppsError;
         setPpsLogs(ppsData || []);
 
+        const { data: defectData, error: defectError } = await supabase
+          .from('road_defects_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+          
+        if (defectError && defectError.code !== '42P01') {
+          console.error(defectError);
+        } else {
+          setDefectLogs(defectData || []);
+        }
+
         // Fetch user roles
         const { data: rolesData, error: rolesError } = await supabase
           .from('user_roles')
@@ -95,12 +108,14 @@ export default function Admin() {
   const getActiveLogs = () => {
     if (activeLogTab === 'roads') return logs;
     if (activeLogTab === 'rivers') return riverLogs;
+    if (activeLogTab === 'defects') return defectLogs;
     return ppsLogs;
   };
   
   const filteredLogs = getActiveLogs().filter(log => {
     const searchTarget = activeLogTab === 'roads' ? log.road_name : 
                          activeLogTab === 'rivers' ? log.river_name : 
+                         activeLogTab === 'defects' ? log.road_name :
                          log.pps_name;
     const matchesSearch = searchTarget?.toLowerCase().includes(searchQuery.toLowerCase());
     
@@ -161,25 +176,26 @@ export default function Admin() {
       
       if (activeLogTab === 'roads') {
         const targetRoad = roads.find(r => r.Name === log.road_name);
-        if (!targetRoad) throw new Error("Could not find this road in ArcGIS to revert the status.");
 
-        const { data: previousLogs, error: prevError } = await supabase
-          .from('submission_logs')
-          .select('*').eq('road_name', log.road_name).neq('id', log.id).order('created_at', { ascending: false }).limit(1);
-        if (prevError) throw prevError;
+        if (targetRoad && !targetRoad.isDistrictRoad) {
+          const { data: previousLogs, error: prevError } = await supabase
+            .from('submission_logs')
+            .select('*').eq('road_name', log.road_name).neq('id', log.id).order('created_at', { ascending: false }).limit(1);
+          if (prevError) throw prevError;
 
-        let attributesToRevert = { DEPTH: null, Status: null, DAMAGE: null };
-        if (previousLogs && previousLogs.length > 0) {
-          const prev = previousLogs[0];
-          attributesToRevert = { DEPTH: prev.depth, Status: prev.status, DAMAGE: prev.damage };
+          let attributesToRevert = { DEPTH: null, Status: null, DAMAGE: null };
+          if (previousLogs && previousLogs.length > 0) {
+            const prev = previousLogs[0];
+            attributesToRevert = { DEPTH: prev.depth, Status: prev.status, DAMAGE: prev.damage };
+          }
+          await updateFeatureStatus(targetRoad.layerId, targetRoad.OBJECTID, attributesToRevert);
         }
-        await updateFeatureStatus(targetRoad.layerId, targetRoad.OBJECTID, attributesToRevert);
         
         const { error: deleteError } = await supabase.from('submission_logs').delete().eq('id', log.id);
         if (deleteError) throw deleteError;
         
         setLogs(logs.filter(l => l.id !== log.id));
-        showStatus('success', `Log deleted and ArcGIS map reverted for ${log.road_name}`);
+        showStatus('success', `Log deleted successfully for ${log.road_name}`);
       
       } else if (activeLogTab === 'rivers') {
         const targetRiver = rivers.find(r => r.River_Name === log.river_name);
@@ -209,6 +225,12 @@ export default function Admin() {
         
         setPpsLogs(ppsLogs.filter(l => l.id !== log.id));
         showStatus('success', `Log deleted successfully for ${log.pps_name}`);
+      } else if (activeLogTab === 'defects') {
+        const { error: deleteError } = await supabase.from('road_defects_logs').delete().eq('id', log.id);
+        if (deleteError) throw deleteError;
+        
+        setDefectLogs(defectLogs.filter(l => l.id !== log.id));
+        showStatus('success', `Defect log deleted successfully for ${log.road_name}`);
       }
 
     } catch (err) {
@@ -338,6 +360,12 @@ export default function Admin() {
               >
                 PPS Supplies
               </button>
+              <button 
+                onClick={() => { setActiveLogTab('defects'); setCurrentPage(1); }}
+                className={`text-sm font-medium px-4 py-2 border-b-2 transition-colors ${activeLogTab === 'defects' ? 'border-red-500 text-red-600 dark:text-red-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'}`}
+              >
+                Road Defects
+              </button>
             </div>
           </div>
           
@@ -394,10 +422,10 @@ export default function Admin() {
               <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800/50 dark:text-gray-300">
                 <tr>
                   <th scope="col" className="px-6 py-4 font-semibold">Date</th>
-                  <th scope="col" className="px-6 py-4 font-semibold">{activeLogTab === 'roads' ? 'Road' : activeLogTab === 'rivers' ? 'River' : 'PPS Name'}</th>
+                  <th scope="col" className="px-6 py-4 font-semibold">{activeLogTab === 'roads' || activeLogTab === 'defects' ? 'Road' : activeLogTab === 'rivers' ? 'River' : 'PPS Name'}</th>
                   <th scope="col" className="px-6 py-4 font-semibold">Status</th>
                   <th scope="col" className="px-6 py-4 font-semibold">{activeLogTab === 'pps' ? 'Updated By' : 'Submitter'}</th>
-                  <th scope="col" className="px-6 py-4 font-semibold text-right">{activeLogTab === 'pps' ? 'Delete' : 'Delete & Revert'}</th>
+                  <th scope="col" className="px-6 py-4 font-semibold text-right">{activeLogTab === 'pps' || activeLogTab === 'defects' ? 'Delete' : 'Delete & Revert'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-zinc-800/80">
@@ -408,7 +436,7 @@ export default function Admin() {
                 ) : paginatedLogs.map((log) => (
                   <tr key={log.id} className="bg-white dark:bg-zinc-900 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">{new Date(log.created_at || log.updated_at).toLocaleString('en-MY')}</td>
-                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{activeLogTab === 'roads' ? log.road_name : activeLogTab === 'rivers' ? log.river_name : log.pps_name}</td>
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{activeLogTab === 'roads' || activeLogTab === 'defects' ? log.road_name : activeLogTab === 'rivers' ? log.river_name : log.pps_name}</td>
                     <td className="px-6 py-4">{activeLogTab === 'pps' ? '-' : log.status}</td>
                     <td className="px-6 py-4">
                       {activeLogTab === 'pps' ? (
@@ -505,7 +533,7 @@ export default function Admin() {
                   </div>
                   <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete Submission?</h3>
                   <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-                    Are you sure you want to delete the log for <span className="font-semibold text-gray-900 dark:text-white">{logToDelete.road_name || logToDelete.river_name || logToDelete.pps_name}</span>? {activeLogTab !== 'pps' && 'This will permanently undo the status change on the live ArcGIS map.'}
+                    Are you sure you want to delete the log for <span className="font-semibold text-gray-900 dark:text-white">{logToDelete.road_name || logToDelete.river_name || logToDelete.pps_name}</span>? {(activeLogTab === 'roads' || activeLogTab === 'rivers') && 'This will permanently undo the status change on the live ArcGIS map.'}
                   </p>
                   
                   <div className="flex gap-3 w-full">

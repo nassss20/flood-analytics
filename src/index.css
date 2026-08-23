@@ -38,3 +38,14 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+.river-glow { filter: drop-shadow(0 0 4px currentColor); }
+
+/* Custom Blueprint Map Styles for Background */
+.map-tiles-blueprint-dark {
+  filter: sepia(100%) hue-rotate(180deg) saturate(400%) brightness(0.6) contrast(1.2);
+}
+
+.map-tiles-blueprint-light {
+  filter: sepia(100%) hue-rotate(180deg) saturate(300%) contrast(1.1);
+}

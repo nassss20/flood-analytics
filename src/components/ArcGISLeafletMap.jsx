@@ -1,0 +1,494 @@
+import { useEffect, useState, useRef } from 'react';
+import { MapContainer, TileLayer, GeoJSON, useMap, ZoomControl } from 'react-leaflet';
+import L from 'leaflet';
+import { useTheme } from 'next-themes';
+import 'leaflet/dist/leaflet.css';
+
+// Fix Leaflet icons
+delete L.Icon.Default.prototype._getIconUrl;
+
+const BASE_URL_ROADS_PPS = "https://services5.arcgis.com/2ZRAaoTSJbQ20ceg/arcgis/rest/services/ROAD_ACCESSIBILITY_DUE_TO_FLOOD_WFL1/FeatureServer";
+const BASE_URL_RIVERS = "https://services5.arcgis.com/2ZRAaoTSJbQ20ceg/arcgis/rest/services/Rivers_Flood/FeatureServer/0";
+
+const ROAD_LAYERS = [80, 81, 84];
+const DISTRICT_ROAD_LAYERS = [0, 1, 3, 89, 71, 72, 73, 94, 95];
+const DISTRICT_ROAD_MAP = {
+  0: 'Johor Bahru', 1: 'Johor Bahru', 94: 'Johor Bahru',
+  3: 'Kota Tinggi', 89: 'Kota Tinggi', 95: 'Kota Tinggi',
+  71: 'Segamat', 72: 'Segamat', 73: 'Segamat'
+};
+const BOUNDARY_LAYERS = [85, 88, 90]; // Segamat, JB, Kota Tinggi
+const PPS_LAYER = 97;
+
+function MapUpdater() {
+  const map = useMap();
+  useEffect(() => {
+    // Leaflet needs to recalculate its container size if rendered inside complex flex/grid layouts.
+    // A small timeout ensures the DOM has settled before invalidating size.
+    const timeout = setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [map]);
+  return null;
+}
+
+function MapController({ selectedFeature, layerRefs }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!selectedFeature) return;
+    const layers = layerRefs.current[`${selectedFeature.type}-${selectedFeature.name}`];
+    if (layers && layers.length > 0) {
+      let targetLayer = layers[0];
+
+      if (layers[0].getBounds) {
+        // Find the largest segment to zoom to, avoiding massive bounding boxes for disconnected bits
+        let maxArea = 0;
+        
+        layers.forEach(l => {
+          if (l.getBounds) {
+            // If the table click has a specific district, skip segments that belong to a different district
+            if (selectedFeature.district) {
+              const layerDist = l.feature?.properties?.DISTRICT || l.feature?.properties?.District || l.feature?.properties?.district;
+              if (layerDist && layerDist.toUpperCase() !== selectedFeature.district.toUpperCase()) {
+                return;
+              }
+            }
+
+            const bounds = l.getBounds();
+            const area = Math.abs(bounds.getNorth() - bounds.getSouth()) * Math.abs(bounds.getEast() - bounds.getWest());
+            if (area > maxArea) {
+              maxArea = area;
+              targetLayer = l;
+            }
+          }
+        });
+        
+        map.flyToBounds(targetLayer.getBounds(), { padding: [50, 50], maxZoom: 15, duration: 1.5 });
+      } else if (layers[0].getLatLng) {
+        map.flyTo(layers[0].getLatLng(), 15, { duration: 1.5 });
+      }
+      // Open popup on the target layer
+      targetLayer.openPopup();
+    }
+  }, [selectedFeature, map, layerRefs]);
+  return null;
+}
+
+export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], selectedFeature = null, mapMode = 'flood' }) {
+  const layerRefs = useRef({});
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  const attemptedRoads = useRef(new Set());
+  const [geoData, setGeoData] = useState({
+    rivers: null,
+    roads: [],
+    boundaries: [],
+    pps: null
+  });
+
+  useEffect(() => {
+    setMounted(true);
+
+    const fetchGeoJSON = async (url) => {
+      const params = new URLSearchParams({
+        where: "1=1",
+        outFields: "*",
+        f: "geojson"
+      });
+      try {
+        const res = await fetch(`${url}/query?${params.toString()}`);
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (err) {
+        console.error("Failed to fetch GeoJSON from:", url, err);
+        return null;
+      }
+    };
+
+    const loadData = async () => {
+      try {
+        const riversData = await fetchGeoJSON(BASE_URL_RIVERS);
+        const ppsData = await fetchGeoJSON(`${BASE_URL_ROADS_PPS}/${PPS_LAYER}`);
+        
+        const roadsDataArray = [];
+        for (const id of ROAD_LAYERS) {
+          const data = await fetchGeoJSON(`${BASE_URL_ROADS_PPS}/${id}`);
+          if (data && data.features) {
+            data.features.forEach(f => {
+              let dist = f.properties.DISTRICT || f.properties.District || f.properties.district;
+              if (dist) {
+                f.properties.DISTRICT = dist.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+              }
+            });
+            roadsDataArray.push(data);
+          }
+        }
+
+        const boundariesDataArray = [];
+        for (const id of BOUNDARY_LAYERS) {
+          const data = await fetchGeoJSON(`${BASE_URL_ROADS_PPS}/${id}`);
+          if (data) boundariesDataArray.push(data);
+        }
+
+        setGeoData({
+          rivers: riversData,
+          pps: ppsData,
+          roads: roadsDataArray,
+          boundaries: boundariesDataArray
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Visual stacking order for roads
+  useEffect(() => {
+    if (!geoData.roads.length || !mounted) return;
+    
+    const openLayers = [];
+    const pendingLayers = [];
+    const heavyLayers = [];
+    const closedLayers = [];
+
+    Object.keys(layerRefs.current).forEach(key => {
+      if (key.startsWith('road-')) {
+        const name = key.replace('road-', '');
+        const roadLog = roadsLogs?.find(log => log.road_name === name);
+        const layers = layerRefs.current[key];
+        
+        layers.forEach(layer => {
+          if (!layer.feature) return;
+          const status = roadLog ? roadLog.status : (layer.feature.properties.Status || layer.feature.properties.STATUS);
+          if (status === 'Closed') closedLayers.push(layer);
+          else if (status === 'Heavy Vehicles Only') heavyLayers.push(layer);
+          else if (status === 'Pending Assessment') pendingLayers.push(layer);
+          else openLayers.push(layer);
+        });
+      }
+    });
+
+    // In Leaflet, calling bringToFront() moves the SVG element to the end of the DOM.
+    // By calling it in order of priority, the last one called stays on top!
+    openLayers.forEach(l => l.bringToFront && l.bringToFront());
+    pendingLayers.forEach(l => l.bringToFront && l.bringToFront());
+    heavyLayers.forEach(l => l.bringToFront && l.bringToFront());
+    closedLayers.forEach(l => l.bringToFront && l.bringToFront());
+
+  }, [roadsLogs, geoData.roads, mounted]);
+
+  // Dynamically fetch missing district roads if they are logged
+  useEffect(() => {
+    if (!geoData.roads.length || !roadsLogs.length || !mounted) return;
+    
+    const loadedRoadNames = new Set();
+    geoData.roads.forEach(layerData => {
+      if (layerData.features) {
+        layerData.features.forEach(f => {
+          if (f.properties.Name) loadedRoadNames.add(f.properties.Name);
+          if (f.properties.NAME) loadedRoadNames.add(f.properties.NAME);
+        });
+      }
+    });
+
+    const missingRoads = new Set();
+    roadsLogs.forEach(log => {
+      if (!loadedRoadNames.has(log.road_name) && !attemptedRoads.current.has(log.road_name)) {
+        missingRoads.add(log.road_name);
+        attemptedRoads.current.add(log.road_name);
+      }
+    });
+
+    if (missingRoads.size === 0) return;
+
+    const fetchMissingRoads = async () => {
+      const namesArray = Array.from(missingRoads).map(n => `'${n.replace(/'/g, "''")}'`).join(',');
+      const whereClause = `NAME IN (${namesArray})`;
+      
+      const fetchPromises = DISTRICT_ROAD_LAYERS.map(async (layerId) => {
+        const url = `${BASE_URL_ROADS_PPS}/${layerId}/query?where=${encodeURIComponent(whereClause)}&outFields=*&f=geojson`;
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data && data.features && data.features.length > 0) {
+            data.features.forEach(f => f.properties.DISTRICT = DISTRICT_ROAD_MAP[layerId]);
+            return data;
+          }
+        } catch (e) {
+          console.error("Failed to fetch district layer", layerId, e);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(fetchPromises);
+      const validResults = results.filter(r => r !== null);
+      
+      if (validResults.length > 0) {
+        setGeoData(prev => ({
+          ...prev,
+          roads: [...prev.roads, ...validResults]
+        }));
+      }
+    };
+
+    fetchMissingRoads();
+  }, [roadsLogs, geoData.roads, mounted]);
+
+  if (!mounted) return null;
+  const isDark = resolvedTheme === 'dark';
+
+  // Styling logic based on ArcGIS pitemx rules
+  const getRiverStyle = (feature) => {
+    const level = feature.properties.Water_Level;
+    let color = '#06b6d4'; // Cyan (Safe/Normal) instead of green to look more like water
+    if (level > 34.9 && level <= 36.2) color = '#eab308'; // Yellow (Alert)
+    if (level > 36.2 && level <= 36.8) color = '#f97316'; // Orange (Warning)
+    if (level > 36.8) color = '#ef4444'; // Red (Danger)
+
+    // Make rivers distinct: thicker, softer opacity, and add a custom CSS class for glowing
+    return { color, weight: 6, opacity: 0.6, lineCap: 'round', lineJoin: 'round', className: 'river-glow' };
+  };
+
+  const getBoundaryStyle = () => {
+    return {
+      color: isDark ? '#4b5563' : '#9ca3af',
+      weight: 2,
+      dashArray: '4, 4',
+      fillColor: isDark ? '#3b82f6' : '#2563eb',
+      fillOpacity: 0.05
+    };
+  };
+
+  const getRoadStyle = (feature) => {
+    const name = feature.properties.Name || feature.properties.NAME;
+    
+    if (mapMode === 'defects') {
+      const defectLog = defectLogs?.find(log => log.road_name === name);
+      if (!defectLog) {
+        return { color: isDark ? '#4b5563' : '#d1d5db', weight: 2, opacity: 0.4, dashArray: '5, 5' }; // Light grey / less prominent
+      }
+      
+      const status = defectLog.status;
+      let color = '#22c55e'; // Completed -> Green
+      if (status === 'Ongoing') color = '#f97316'; // Ongoing -> Orange
+      
+      return { color, weight: 4, opacity: 1.0, dashArray: '5, 5' };
+    } else {
+      const roadLog = roadsLogs?.find(log => log.road_name === name);
+      const status = roadLog ? roadLog.status : (feature.properties.Status || feature.properties.STATUS);
+      
+      let color = '#22c55e'; // Open / Default
+      if (status === 'Closed') color = '#ef4444'; // Red
+      if (status === 'Heavy Vehicles Only') color = '#eab308'; // Yellow
+      if (status === 'Pending Assessment') color = '#f97316'; // Orange
+
+      return { color, weight: 3, opacity: 1.0, dashArray: '5, 5' }; // Roads dashed to separate from continuous rivers
+    }
+  };
+
+  const getPpsMarker = (feature, latlng) => {
+    const status = feature.properties.Status;
+    const type = feature.properties.PPS_Type?.toLowerCase() || '';
+
+    let colorClass = 'bg-gray-400';
+    let borderClass = 'border-gray-500';
+
+    if (status === 'Active') {
+      colorClass = 'bg-green-500';
+      borderClass = 'border-green-600';
+    } else if (status === 'Standby') {
+      colorClass = 'bg-blue-500';
+      borderClass = 'border-blue-600';
+    }
+
+    const schoolSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 8-4 8 4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"/><path d="M18 5v17"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg>`;
+    const hallSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>`;
+    
+    const iconSvg = type.includes('school') ? schoolSvg : hallSvg;
+
+    const html = `
+      <div class="w-6 h-6 rounded-full flex items-center justify-center ${colorClass} border-2 ${borderClass} shadow-md shadow-black/50">
+        ${iconSvg}
+      </div>
+    `;
+
+    return L.marker(latlng, {
+      icon: L.divIcon({
+        className: 'bg-transparent border-none',
+        html,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      })
+    });
+  };
+
+  // Tooltip bindings
+  const onEachRiver = (feature, layer) => {
+    if (feature.properties) {
+      const name = feature.properties.River_Name;
+      if (!layerRefs.current[`river-${name}`]) layerRefs.current[`river-${name}`] = [];
+      layerRefs.current[`river-${name}`].push(layer);
+      
+      // Clickable popup for details
+      layer.bindPopup(`
+        <div class="font-sans text-xs min-w-[150px]">
+          <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
+          Water Level: ${feature.properties.Water_Level?.toFixed(2)}m<br/>
+          Status: ${feature.properties.Status}
+        </div>
+      `, { className: 'custom-popup' });
+
+      layer.on('mouseover', function() { if (!this._isClicked) this.openPopup(); });
+      layer.on('mouseout', function() { if (!this._isClicked) this.closePopup(); });
+      layer.on('click', function() { this._isClicked = true; this.openPopup(); });
+      layer.on('popupclose', function() { this._isClicked = false; });
+    }
+  };
+
+  const onEachRoad = (feature, layer) => {
+    if (feature.properties) {
+      const name = feature.properties.Name || feature.properties.NAME;
+      if (!layerRefs.current[`road-${name}`]) layerRefs.current[`road-${name}`] = [];
+      layerRefs.current[`road-${name}`].push(layer);
+
+      if (mapMode === 'defects') {
+        const defectLog = defectLogs?.find(log => log.road_name === name);
+        if (defectLog) {
+          const types = defectLog.defect_types?.filter(t => t !== 'Others (Lain-lain)') || [];
+          if (defectLog.other_defect_type) types.push(defectLog.other_defect_type);
+          const typesHtml = types.length > 0 ? `<ul class="list-disc pl-4 mt-1 mb-2">${types.map(t => `<li>${t}</li>`).join('')}</ul>` : '<span>-</span>';
+
+          const causes = defectLog.defect_causes?.filter(c => c !== 'Others (Lain-lain)') || [];
+          if (defectLog.other_defect_cause) causes.push(defectLog.other_defect_cause);
+          const causesHtml = causes.length > 0 ? `<ul class="list-disc pl-4 mt-1">${causes.map(c => `<li>${c}</li>`).join('')}</ul>` : '<span>-</span>';
+
+          layer.bindPopup(`
+            <div class="font-sans text-xs min-w-[200px]">
+              <strong class="block text-sm border-b border-gray-600 pb-1 mb-1 text-orange-600">${name}</strong>
+              <div class="mb-1"><span class="font-semibold">Status:</span> ${defectLog.status || 'Ongoing'}</div>
+              <div class="mb-1"><span class="font-semibold block">Types:</span> ${typesHtml}</div>
+              <div><span class="font-semibold block">Causes:</span> ${causesHtml}</div>
+              ${defectLog.notes ? `<div class="mt-2 pt-2 border-t border-gray-200"><span class="font-semibold block">Notes:</span> <span class="italic text-gray-600">"${defectLog.notes}"</span></div>` : ''}
+            </div>
+          `, { className: 'custom-popup' });
+        } else {
+          layer.bindPopup(`
+            <div class="font-sans text-xs min-w-[150px]">
+              <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
+              <div class="text-gray-500 italic">No defects reported.</div>
+            </div>
+          `, { className: 'custom-popup' });
+        }
+      } else {
+        const roadLog = roadsLogs?.find(log => log.road_name === name);
+        const status = roadLog ? roadLog.status : (feature.properties.Status || feature.properties.STATUS);
+        const depthRaw = roadLog?.depth !== undefined ? roadLog.depth : feature.properties.DEPTH;
+        const depthStr = depthRaw !== null && depthRaw !== undefined ? `${parseFloat(depthRaw).toFixed(2)}m` : 'N/A';
+
+        layer.bindPopup(`
+          <div class="font-sans text-xs min-w-[150px]">
+            <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
+            <div class="mb-1"><span class="font-semibold">Status:</span> ${status}</div>
+            <div><span class="font-semibold">Water Depth:</span> ${depthStr}</div>
+          </div>
+        `, { className: 'custom-popup' });
+      }
+
+      layer.on('mouseover', function() { if (!this._isClicked) this.openPopup(); });
+      layer.on('mouseout', function() { if (!this._isClicked) this.closePopup(); });
+      layer.on('click', function() { this._isClicked = true; this.openPopup(); });
+      layer.on('popupclose', function() { this._isClicked = false; });
+    }
+  };
+
+  const onEachPPS = (feature, layer) => {
+    if (feature.properties) {
+      const name = feature.properties.PPS_Name;
+      if (!layerRefs.current[`pps-${name}`]) layerRefs.current[`pps-${name}`] = [];
+      layerRefs.current[`pps-${name}`].push(layer);
+
+      layer.bindPopup(`
+        <div class="font-sans text-xs min-w-[150px]">
+          <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
+          Type: ${feature.properties.PPS_Type || 'Unknown'}<br/>
+          Capacity: ${feature.properties.Capacity || 'N/A'}<br/>
+          Status: ${feature.properties.Status}
+        </div>
+      `, { className: 'custom-popup' });
+
+      layer.on('mouseover', function() { if (!this._isClicked) this.openPopup(); });
+      layer.on('mouseout', function() { if (!this._isClicked) this.closePopup(); });
+      layer.on('click', function() { this._isClicked = true; this.openPopup(); });
+      layer.on('popupclose', function() { this._isClicked = false; });
+    }
+  };
+
+  return (
+    <div className="absolute inset-0 z-10 group/map rounded-xl overflow-hidden shadow-lg border border-gray-200 dark:border-zinc-800">
+      
+      {/* Loading Overlay */}
+      {(!geoData.rivers && !geoData.pps) && (
+        <div className="absolute inset-0 bg-gray-50 dark:bg-zinc-900/50 flex flex-col items-center justify-center z-20 pointer-events-none backdrop-blur-sm transition-opacity duration-300">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <p className="text-gray-500 dark:text-gray-400 font-medium font-sans">Syncing ArcGIS Telemetry...</p>
+        </div>
+      )}
+
+      {/* Subtle scanline overlay for the fintech feel, matching BackgroundMap */}
+      <div className={`absolute inset-0 z-20 pointer-events-none opacity-[0.03] bg-[length:100%_4px] ${isDark ? 'bg-[linear-gradient(transparent_50%,rgba(0,0,0,1)_50%)]' : 'bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.5)_50%)]'}`} />
+
+      <MapContainer 
+        center={[1.9, 103.5]} 
+        zoom={9}
+        zoomControl={false}
+        className="w-full h-full"
+      >
+        <ZoomControl position="bottomleft" />
+        <TileLayer
+          key="voyager"
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        />
+        
+        <MapUpdater />
+        <MapController selectedFeature={selectedFeature} layerRefs={layerRefs} />
+
+        {geoData.boundaries.map((boundaryLayerData, idx) => (
+          <GeoJSON 
+            key={`boundary-layer-${idx}`}
+            data={boundaryLayerData}
+            style={getBoundaryStyle}
+            interactive={false}
+          />
+        ))}
+
+        {geoData.rivers && mapMode === 'flood' && (
+          <GeoJSON 
+            data={geoData.rivers} 
+            style={getRiverStyle}
+            onEachFeature={onEachRiver}
+          />
+        )}
+
+        {geoData.roads.map((roadLayerData, idx) => (
+          <GeoJSON 
+            key={`road-layer-${idx}-${mapMode}-${defectLogs.length}-${roadsLogs.length}`}
+            data={roadLayerData}
+            style={getRoadStyle}
+            onEachFeature={onEachRoad}
+          />
+        ))}
+
+        {geoData.pps && mapMode === 'flood' && (
+          <GeoJSON 
+            data={geoData.pps} 
+            pointToLayer={getPpsMarker}
+            onEachFeature={onEachPPS}
+          />
+        )}
+      </MapContainer>
+    </div>
+  );
+}

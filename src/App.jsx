@@ -50,7 +50,7 @@ function App() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Account Suspended</h1>
           <p className="text-gray-500 dark:text-gray-400 mb-8">
-            Your access to Flood Analytics has been halted by an administrator. Please contact support if you believe this is a mistake.
+            Your access to FloodWise has been halted by an administrator. Please contact support if you believe this is a mistake.
           </p>
           <button 
             onClick={handleLogout}
@@ -73,10 +73,10 @@ function App() {
       {session && (
         <nav className="border-b border-gray-200/50 dark:border-zinc-800/50 bg-white dark:bg-zinc-900 px-4 py-3 border-b border-gray-200 dark:border-zinc-800 shadow-sm flex items-center justify-between sticky top-0 z-30 shadow-sm">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded-xl shadow-inner">
-              <Droplets className="text-blue-600 dark:text-blue-400" />
+            <div className="flex items-center justify-center p-1">
+              <img src="/floodwise-circle.png" alt="FloodWise Logo" className="w-12 h-12 drop-shadow-md transform scale-125" />
             </div>
-            <p className="font-display font-bold text-xl tracking-tight hidden sm:block">Flood<span className="text-blue-600 dark:text-blue-400">Analytics</span></p>
+            <p className="font-display font-bold text-xl tracking-tight hidden sm:block">Flood<span className="text-blue-600 dark:text-blue-400">Wise</span></p>
           </div>
           
           <div className="flex gap-2 sm:gap-6 overflow-x-auto no-scrollbar">

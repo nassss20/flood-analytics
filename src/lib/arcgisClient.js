@@ -8,6 +8,8 @@ const ROAD_LAYERS = [
 
 const PPS_LAYER = { id: 97, nameField: "PPS_Name", statusField: "Status" };
 
+import districtRoadsList from './districtRoads.json';
+
 /**
  * Fetches all roads from multiple ArcGIS Feature Layers.
  */
@@ -31,8 +33,16 @@ export async function fetchRoads() {
       if (data.features) {
         return data.features.map(feature => {
           const attr = feature.attributes;
+          
+          // Standardize DISTRICT to Title Case (e.g. SEGAMAT -> Segamat)
+          let standardDistrict = attr.DISTRICT || attr.District || attr.district;
+          if (standardDistrict) {
+            standardDistrict = standardDistrict.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+          }
+
           return {
             ...attr,
+            DISTRICT: standardDistrict, // Overwrite with standardized case
             // Standardize field names across layers so React always sees "Name" and "Status"
             Name: attr[layer.nameField],
             Status: attr[layer.statusField],
@@ -44,11 +54,64 @@ export async function fetchRoads() {
     });
 
     const results = await Promise.all(fetchPromises);
-    // Flatten array of arrays and sort by name
-    return results.flat().sort((a, b) => {
-      const nameA = a.Name || "";
-      const nameB = b.Name || "";
-      return nameA.localeCompare(nameB);
+    const flattened = results.flat();
+
+    // Deduplicate standard roads by Name and District
+    const uniqueRoadsMap = new Map();
+    for (const road of flattened) {
+      if (!road.Name) continue;
+      
+      // Normalize Segamat's messy road name variations
+      let displayName = road.Name.trim();
+      if (road.DISTRICT && road.DISTRICT.toUpperCase() === 'SEGAMAT') {
+        const upper = displayName.toUpperCase();
+        if (upper === 'FELDA MEDOI' || upper === 'JALAN FELDA MEDOI' || upper === 'JALAN MEDOI') {
+          displayName = 'Felda Medoi';
+        } else if (upper === 'FELDA PEMANIS' || upper === 'JALAN FELDA PEMANIS') {
+          displayName = 'Felda Pemanis';
+        } else if (upper === 'FELDA KEMELAH' || upper === 'JALAN FELDA KEMELAH') {
+          displayName = 'Felda Kemelah';
+        }
+      }
+
+      // Use uppercase for the key so we don't get duplicates like "Jalan Cempaka" vs "JALAN CEMPAKA"
+      const key = `${displayName.toUpperCase()}_${(road.DISTRICT || '').toUpperCase()}`;
+      
+      // Prefer standard roads with a Route_No or District over ones without if there's a duplicate
+      if (!uniqueRoadsMap.has(key) || road.Route_No) {
+        uniqueRoadsMap.set(key, { ...road, Name: displayName });
+      }
+    }
+
+    // Add district roads from static JSON to the dropdown list
+    const districtRoads = districtRoadsList.map((road) => ({
+      isDistrictRoad: true,
+      Name: road.Name,
+      DISTRICT: road.DISTRICT
+    }));
+
+    for (const dRoad of districtRoads) {
+      let displayName = dRoad.Name.trim();
+      if (dRoad.DISTRICT && dRoad.DISTRICT.toUpperCase() === 'SEGAMAT') {
+        const upper = displayName.toUpperCase();
+        if (upper === 'FELDA MEDOI' || upper === 'JALAN FELDA MEDOI' || upper === 'JALAN MEDOI') {
+          displayName = 'Felda Medoi';
+        } else if (upper === 'FELDA PEMANIS' || upper === 'JALAN FELDA PEMANIS') {
+          displayName = 'Felda Pemanis';
+        } else if (upper === 'FELDA KEMELAH' || upper === 'JALAN FELDA KEMELAH') {
+          displayName = 'Felda Kemelah';
+        }
+      }
+
+      const key = `${displayName.toUpperCase()}_${(dRoad.DISTRICT || '').toUpperCase()}`;
+      if (!uniqueRoadsMap.has(key)) {
+        uniqueRoadsMap.set(key, { ...dRoad, Name: displayName });
+      }
+    }
+
+    // Convert back to array and sort by name
+    return Array.from(uniqueRoadsMap.values()).sort((a, b) => {
+      return a.Name.localeCompare(b.Name);
     });
 
   } catch (error) {

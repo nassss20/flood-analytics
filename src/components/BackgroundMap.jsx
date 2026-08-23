@@ -19,20 +19,20 @@ const polylinePath = coreLocations.map(loc => loc.pos);
 
 // Create a sharp, fintech-style data node icon
 const createDataNodeIcon = (color = 'blue', isDark = true) => {
-  const outerBorder = color === 'blue' 
-    ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.6)]' 
+  const outerBorder = color === 'blue'
+    ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.6)]'
     : 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.6)]';
   const innerFill = color === 'blue' ? 'bg-blue-500' : 'bg-cyan-400';
-  
+
   return L.divIcon({
     className: 'bg-transparent border-none',
     html: `
       <div class="relative flex items-center justify-center w-8 h-8 group">
-        {/* Radar ping */}
+        <!-- Radar ping -->
         <div class="absolute inset-0 border-[1px] animate-sonar-ping opacity-60 ${outerBorder}"></div>
-        {/* Outer tech bracket */}
+        <!-- Outer tech bracket -->
         <div class="absolute inset-0 border-[1px] opacity-80 ${outerBorder} transform rotate-45"></div>
-        {/* Inner solid core */}
+        <!-- Inner solid core -->
         <div class="w-2 h-2 ${innerFill} shadow-lg z-10"></div>
       </div>
     `,
@@ -51,17 +51,17 @@ const MapAnimator = () => {
 
     const moveToNextLocation = () => {
       const loc = coreLocations[currentIndex];
-      
+
       // Smoothly fly to the next location
       map.flyTo(loc.pos, loc.zoom, {
         animate: true,
-        duration: 3.5, 
+        duration: 3.5,
         easeLinearity: 0.1
       });
 
       // Move to next index, loop back to start
       currentIndex = (currentIndex + 1) % coreLocations.length;
-      
+
       // Wait for flight to finish, pause, then fly again
       timeoutId = setTimeout(moveToNextLocation, 10000); // 10 second cycle per node
     };
@@ -106,12 +106,12 @@ export default function BackgroundMap() {
 
   return (
     <div className="fixed inset-0 w-full h-full -z-20 bg-gray-100 dark:bg-[#0c0d12] pointer-events-auto overflow-hidden group/map">
-      
+
       {/* Subtle scanline overlay for the fintech feel */}
       <div className={`absolute inset-0 z-10 pointer-events-none opacity-[0.03] bg-[length:100%_4px] ${isDark ? 'bg-[linear-gradient(transparent_50%,rgba(0,0,0,1)_50%)]' : 'bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.5)_50%)]'}`} />
 
-      <MapContainer 
-        center={[2.0, 103.3]} 
+      <MapContainer
+        center={[2.0, 103.3]}
         zoom={8}
         zoomControl={false}
         dragging={false}
@@ -121,37 +121,37 @@ export default function BackgroundMap() {
         boxZoom={false}
         keyboard={false}
         attributionControl={false}
-        className="w-screen h-screen opacity-100"
+        className="w-screen h-screen opacity-30"
       >
         <TileLayer
           key={isDark ? 'dark' : 'light'}
-          url={isDark 
-            ? "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
-            : "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png"
+          url={isDark
+            ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+            : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
           }
         />
-        
+
         <MapAnimator />
 
         {/* Telemetry data flow line */}
-        <Polyline 
-          positions={polylinePath} 
-          pathOptions={{ color: '#0ea5e9', weight: 2, dashArray: '5, 10', opacity: 0.6 }} 
-          className="animate-pulse" 
+        <Polyline
+          positions={polylinePath}
+          pathOptions={{ color: '#0ea5e9', weight: 2, dashArray: '5, 10', opacity: 0.6 }}
+          className="animate-pulse"
         />
 
         {/* Nodes and Tooltips */}
         {coreLocations.map((loc, idx) => (
-          <Marker 
-            key={loc.id} 
-            position={loc.pos} 
-            icon={createDataNodeIcon(idx % 2 === 0 ? 'blue' : 'cyan', isDark)} 
+          <Marker
+            key={loc.id}
+            position={loc.pos}
+            icon={createDataNodeIcon(idx % 2 === 0 ? 'blue' : 'cyan', isDark)}
           >
-            <Tooltip 
-              direction="top" 
-              offset={[0, -15]} 
+            <Tooltip
+              direction="top"
+              offset={[0, -15]}
               opacity={1}
-              permanent={false} 
+              permanent={false}
               className="bg-white dark:bg-zinc-950 border-2 border-blue-500 rounded-none text-gray-900 dark:text-white font-sans text-xs p-2 shadow-2xl before:hidden after:hidden"
             >
               <div className="flex flex-col gap-1 min-w-[120px]">
@@ -176,6 +176,6 @@ export default function BackgroundMap() {
           </Marker>
         ))}
       </MapContainer>
-    </div>
+    </div >
   );
 }

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal, Database, RefreshCw, AlertCircle, ExternalLink, Activity } from 'lucide-react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -31,9 +30,9 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
     setAnalysisTime(null);
     
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GROQ_API_KEY;
       if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
-        throw new Error("API Key missing. Please add VITE_GEMINI_API_KEY to your .env file.");
+        throw new Error("API Key missing. Please add VITE_GROQ_API_KEY to your .env file.");
       }
 
       // Step 1: Fetch External Data
@@ -60,13 +59,11 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
       const dangerousRivers = (riversData || []).filter(r => r.Status === 'Danger' || r.Status === 'Warning').map(r => `${r.River_Name} (District: ${r.District || 'Unknown'}, ${r.Status}, Level: ${r.Water_Level}m)`);
       const activePPS = (ppsData || []).filter(p => p.Status === 'Open').map(p => `${p.PPS_Name} (District: ${p.District || 'Unknown'}, Capacity: ${p.Capacity})`);
 
-      // Step 3: Initialize Gemini
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+      // Step 3: Prepare the AI Prompt
 
       const prompt = `
         You are an AI Flood Crisis Commander for Johor, Malaysia. 
-        Your job is to generate a SitRep emphasizing the cross-agency impact between Rivers (JPS), Roads (JKR), and Evacuation Centers (PPS).
+        Your job is to analyze the data and generate clear instructions, next steps, and specific areas to monitor for the local authorities (pihak yang berkuasa) based on the combined cross-agency data (Rivers (JPS), Roads (JKR), and Evacuation Centers (PPS)).
         
         Time of Analysis: ${currentTime}
 
@@ -79,16 +76,44 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
         Active PPS: ${activePPS.length > 0 ? activePPS.join(', ') : 'None'}
         
         Instructions:
-        1. Output exactly 3 bullet points. Do NOT use introductory text. Start immediately with the bullets.
-        2. Use very simple, straight-to-the-point vocabulary. Keep it short.
-        3. CRITICAL: Only correlate events (rivers, roads, PPS) if they are in the SAME district or geographically connected. Do NOT connect a flooded river in Kota Tinggi to a road closure in Segamat. If they are in different districts, treat them as separate localized incidents.
-        4. Integrate the weather forecast appropriately into the impact assessment (e.g. "Heavy rain in Segamat is worsening the road closure").
+        1. Output exactly 3 bullet points defining NEXT STEPS or INSTRUCTIONS for the authorities. Do NOT use introductory text. Start immediately with the bullets.
+        2. Use authoritative, direct, and simple vocabulary (e.g., "Deploy teams to...", "Monitor water levels at...", "Prepare PPS at...").
+        3. CRITICAL: Only correlate events (rivers, roads, PPS) if they are in the SAME district or geographically connected. 
+        4. Integrate the weather forecast to justify the action (e.g., "Due to expected cloudy/rainy weather in Segamat, keep patrol units on standby near closed roads").
         5. Use standard bullet points (-). Do NOT use markdown asterisks (*).
       `;
 
-      // Step 4: Generate Output
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
+      // Step 4: Call Groq API
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "qwen/qwen3.6-27b",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.2,
+          max_tokens: 4096
+        })
+      });
+
+      if (!groqRes.ok) {
+        const errData = await groqRes.json().catch(() => ({}));
+        throw new Error(errData.error?.message || "Failed to generate report from Groq.");
+      }
+
+      const result = await groqRes.json();
+      console.log("GROQ RAW RESULT:", result);
+      
+      let responseText = result.choices?.[0]?.message?.content || "No response generated.";
+      
+      // Remove any `<think>...</think>` blocks which reasoning models output
+      responseText = responseText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      
+      if (!responseText) {
+        responseText = "The AI processed the request but did not generate a final text response. Please try again.";
+      }
       
       setAnalysisTime(currentTime);
       

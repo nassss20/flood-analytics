@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch Files
+scratch_update*
+test_*.cjs
+*.pdf
+arcgis_*.json
+*.pitemx

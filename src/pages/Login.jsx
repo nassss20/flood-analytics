@@ -50,12 +50,12 @@ export default function Login() {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 200, delay: 0.2 }}
-                className="bg-blue-100 dark:bg-blue-900/30 p-4 rounded-full"
+                className="flex items-center justify-center"
               >
-                <Droplets className="text-blue-600 dark:text-blue-400 w-8 h-8" />
+                <img src="/floodwise-circle.png" alt="FloodWise Logo" className="w-24 h-24 drop-shadow-lg" />
               </motion.div>
               <div className="text-center">
-                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Welcome to Flood Analytics</h1>
+                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Welcome to FloodWise</h1>
                 <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Sign in to access the management portal</p>
               </div>
             </div>

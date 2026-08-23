@@ -57,12 +57,40 @@ export default function DataEntryModal({ isOpen, onClose }) {
   const [suppliesHave, setSuppliesHave] = useState(['']);
   const [suppliesNeed, setSuppliesNeed] = useState(['']);
 
+  // Form Fields - Road Defects
+  const [defectTypes, setDefectTypes] = useState([]);
+  const [defectCauses, setDefectCauses] = useState([]);
+  const [otherDefectType, setOtherDefectType] = useState('');
+  const [otherDefectCause, setOtherDefectCause] = useState('');
+  const [defectStatus, setDefectStatus] = useState('');
+  const [defectNotes, setDefectNotes] = useState('');
+
   // General Fields
   const [submittedByName, setSubmittedByName] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Dropdown constants
+  const DEFECT_TYPES = [
+    "Potholes (Lubang)",
+    "Cracking / Hairline Cracking (Retak / Retak Rerambut)",
+    "Surface Deformations - Depression (Mendapan Permukaan)",
+    "Surface Deformations - Shoving (Terasakan Permukaan)",
+    "Surface Deformations - Corrugation (Permukaan Beralun)"
+  ];
+
+  const DEFECT_CAUSES = [
+    "Flood (Banjir)",
+    "Overloading / High Traffic Load (Muatan Berlebihan / Beban Trafik Tinggi)",
+    "Base/Foundation Structure Issues (Isu Struktur Asas / Pavemen Sedia Ada Lemah)",
+    "Paving Material Design (Reka Bentuk Bahan Turapan)",
+    "Quality of Material / Quality of Work (Kualiti Bahan Turapan / Kualiti Kerja)",
+    "Third Party Interference (Pihak Ketiga)",
+    "Aging / Premix Lifespan (Jangka Masa Premix Yang Lama)",
+    "Low-lying Area (Lokasi Kawasan Rendah)"
+  ];
 
   // Fetch data when modal opens
   useEffect(() => {
@@ -121,12 +149,23 @@ export default function DataEntryModal({ isOpen, onClose }) {
     }
 
     if (entryType === 'Road') {
-      const road = roads.find(r => `${r.layerId}_${r.OBJECTID}` === selectedFeatureId);
+      const road = roads.find(r => r.isDistrictRoad ? r.Name === selectedFeatureId : `${r.layerId}_${r.OBJECTID}` === selectedFeatureId);
       if (road) {
         setSelectedFeatureData(road);
         setFloodDepth(road.DEPTH !== null && road.DEPTH !== undefined ? road.DEPTH.toString() : '');
         setRoadStatus(road.Status || '');
         setDamageType(road.DAMAGE || '');
+      }
+    } else if (entryType === 'Road Defect') {
+      const road = roads.find(r => r.isDistrictRoad ? r.Name === selectedFeatureId : `${r.layerId}_${r.OBJECTID}` === selectedFeatureId);
+      if (road) {
+        setSelectedFeatureData(road);
+        setDefectTypes([]);
+        setDefectCauses([]);
+        setOtherDefectType('');
+        setOtherDefectCause('');
+        setDefectStatus('');
+        setDefectNotes('');
       }
     } else if (entryType === 'River') {
       const river = rivers.find(r => `${r.layerId}_${r.OBJECTID}` === selectedFeatureId);
@@ -227,9 +266,11 @@ export default function DataEntryModal({ isOpen, onClose }) {
           DAMAGE: damageType || null,
         };
 
-        // 1. Update ArcGIS
-        const actualObjectId = parseInt(selectedFeatureId.split('_').pop());
-        await updateFeatureStatus(selectedFeatureData.layerId, actualObjectId, attributes);
+        // 1. Update ArcGIS ONLY if it's a standard telemetry road
+        if (!selectedFeatureData.isDistrictRoad) {
+          const actualObjectId = parseInt(selectedFeatureId.split('_').pop());
+          await updateFeatureStatus(selectedFeatureData.layerId, actualObjectId, attributes);
+        }
 
         // 2. Log to Supabase submission_logs
         await supabase.from('submission_logs').insert([{
@@ -242,6 +283,31 @@ export default function DataEntryModal({ isOpen, onClose }) {
           submitted_by_email: user?.email || 'Unknown',
           user_id: user?.id
         }]);
+
+      } else if (entryType === 'Road Defect') {
+        // ROAD DEFECT UPDATE
+        
+        // Ensure "Others" values are provided if selected
+        const finalOtherType = defectTypes.includes('Others (Lain-lain)') ? otherDefectType : null;
+        const finalOtherCause = defectCauses.includes('Others (Lain-lain)') ? otherDefectCause : null;
+        
+        // Log to Supabase road_defects_logs
+        await supabase.from('road_defects_logs').insert([{
+          road_name: selectedFeatureData.Name || 'Unknown Road',
+          district: selectedFeatureData.DISTRICT || null,
+          defect_types: defectTypes,
+          defect_causes: defectCauses,
+          other_defect_type: finalOtherType,
+          other_defect_cause: finalOtherCause,
+          status: defectStatus || null,
+          notes: defectNotes || null,
+          submitted_by_name: submittedByName,
+          submitted_by_email: user?.email || 'Unknown',
+          user_id: user?.id
+        }]);
+
+        // Note: For Road Defects, we do not update ArcGIS directly because ArcGIS currently only holds Flood data.
+        // The dashboard Map will fetch and display these directly from Supabase instead.
 
       } else if (entryType === 'River') {
         // RIVER UPDATE
@@ -309,15 +375,17 @@ export default function DataEntryModal({ isOpen, onClose }) {
 
   // Filter options based on selected district
   const getOptions = () => {
-    if (entryType === 'Road') {
+    if (entryType === 'Road' || entryType === 'Road Defect') {
       let filtered = roads;
       if (selectedDistrict) {
         filtered = filtered.filter(r => r.DISTRICT?.toUpperCase() === selectedDistrict.toUpperCase());
       }
-      return filtered.map(road => ({
-        value: `${road.layerId}_${road.OBJECTID}`,
-        label: `${road.Route_No ? `${road.Route_No} - ` : ''}${road.Name} (${road.DISTRICT})`
+      const rawOptions = filtered.map(road => ({
+        value: road.isDistrictRoad ? road.Name : `${road.layerId}_${road.OBJECTID}`,
+        label: `${road.Route_No ? `${road.Route_No} - ` : ''}${road.Name}`
       }));
+      return Array.from(new Map(rawOptions.map(opt => [opt.label.trim().toLowerCase(), opt])).values())
+        .sort((a, b) => a.label.localeCompare(b.label));
     } else if (entryType === 'River') {
       let filtered = rivers;
       if (selectedDistrict) {
@@ -325,7 +393,7 @@ export default function DataEntryModal({ isOpen, onClose }) {
       }
       return filtered.map(river => ({
         value: `${river.layerId}_${river.OBJECTID}`,
-        label: `${river.River_Name} (${river.District})`
+        label: river.River_Name
       }));
     } else {
       let filtered = ppsList;
@@ -383,7 +451,8 @@ export default function DataEntryModal({ isOpen, onClose }) {
                           onChange={(e) => setEntryType(e.target.value)}
                           className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 focus:ring-2 focus:ring-blue-500"
                         >
-                          {canEditRoads && <option value="Road">Road Networks</option>}
+                          {canEditRoads && <option value="Road">Road Networks (Flood Status)</option>}
+                          {canEditRoads && <option value="Road Defect">Road Networks (Defect Status)</option>}
                           {canEditPPS && <option value="PPS">PPS (Evacuation Center)</option>}
                           {canEditRivers && <option value="River">River Water Levels</option>}
                         </select>
@@ -411,10 +480,10 @@ export default function DataEntryModal({ isOpen, onClose }) {
                           options={getOptions()}
                           value={selectedFeatureId ? {
                             value: selectedFeatureId,
-                            label: entryType === 'Road'
-                              ? (selectedFeatureData ? `${selectedFeatureData.Route_No ? `${selectedFeatureData.Route_No} - ` : ''}${selectedFeatureData.Name} (${selectedFeatureData.DISTRICT})` : '')
+                            label: (entryType === 'Road' || entryType === 'Road Defect')
+                              ? (selectedFeatureData ? `${selectedFeatureData.Route_No ? `${selectedFeatureData.Route_No} - ` : ''}${selectedFeatureData.Name}` : '')
                               : entryType === 'River'
-                                ? (selectedFeatureData ? `${selectedFeatureData.River_Name} (${selectedFeatureData.District})` : '')
+                                ? (selectedFeatureData ? selectedFeatureData.River_Name : '')
                                 : (selectedFeatureData ? `${selectedFeatureData.PPS_Name} (${selectedFeatureData.PPS_Type || 'Unknown'})` : '')
                           } : null}
                           onChange={(option) => setSelectedFeatureId(option ? option.value : '')}
@@ -470,6 +539,122 @@ export default function DataEntryModal({ isOpen, onClose }) {
                             rows={2} disabled={!selectedFeatureId || isSubmitting} value={damageType} onChange={(e) => setDamageType(e.target.value)}
                             className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 resize-none"
                             placeholder="E.g., Potholes, washed out shoulder..."
+                          />
+                        </div>
+                      </div>
+                    ) : entryType === 'Road Defect' ? (
+                      // --- ROAD DEFECT FORM ---
+                      <div className="grid grid-cols-1 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Defect Types *</label>
+                          <div className="grid grid-cols-1 gap-2 border p-3 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border-gray-200 dark:border-zinc-700 max-h-48 overflow-y-auto">
+                            {DEFECT_TYPES.map(type => (
+                              <label key={type} className="flex items-start gap-2">
+                                <input 
+                                  type="checkbox" 
+                                  className="mt-1 shrink-0 rounded text-blue-600 focus:ring-blue-500 bg-white border-gray-300 dark:bg-zinc-700 dark:border-zinc-600"
+                                  checked={defectTypes.includes(type)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setDefectTypes([...defectTypes, type]);
+                                    else setDefectTypes(defectTypes.filter(t => t !== type));
+                                  }}
+                                  disabled={!selectedFeatureId || isSubmitting}
+                                />
+                                <span className="text-sm text-gray-700 dark:text-gray-300">{type}</span>
+                              </label>
+                            ))}
+                            <label className="flex items-start gap-2">
+                              <input 
+                                type="checkbox" 
+                                className="mt-1 shrink-0 rounded text-blue-600 focus:ring-blue-500 bg-white border-gray-300 dark:bg-zinc-700 dark:border-zinc-600"
+                                checked={defectTypes.includes('Others (Lain-lain)')}
+                                onChange={(e) => {
+                                  if (e.target.checked) setDefectTypes([...defectTypes, 'Others (Lain-lain)']);
+                                  else setDefectTypes(defectTypes.filter(t => t !== 'Others (Lain-lain)'));
+                                }}
+                                disabled={!selectedFeatureId || isSubmitting}
+                              />
+                              <span className="text-sm text-gray-700 dark:text-gray-300">Others (Lain-lain)</span>
+                            </label>
+                          </div>
+                          {defectTypes.includes('Others (Lain-lain)') && (
+                            <input 
+                              type="text" 
+                              required 
+                              placeholder="Specify other defect type..."
+                              value={otherDefectType}
+                              onChange={(e) => setOtherDefectType(e.target.value)}
+                              disabled={!selectedFeatureId || isSubmitting}
+                              className="mt-2 block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-sm"
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Causes of Defect *</label>
+                          <div className="grid grid-cols-1 gap-2 border p-3 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border-gray-200 dark:border-zinc-700 max-h-48 overflow-y-auto">
+                            {DEFECT_CAUSES.map(cause => (
+                              <label key={cause} className="flex items-start gap-2">
+                                <input 
+                                  type="checkbox" 
+                                  className="mt-1 shrink-0 rounded text-blue-600 focus:ring-blue-500 bg-white border-gray-300 dark:bg-zinc-700 dark:border-zinc-600"
+                                  checked={defectCauses.includes(cause)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setDefectCauses([...defectCauses, cause]);
+                                    else setDefectCauses(defectCauses.filter(c => c !== cause));
+                                  }}
+                                  disabled={!selectedFeatureId || isSubmitting}
+                                />
+                                <span className="text-sm text-gray-700 dark:text-gray-300">{cause}</span>
+                              </label>
+                            ))}
+                            <label className="flex items-start gap-2">
+                              <input 
+                                type="checkbox" 
+                                className="mt-1 shrink-0 rounded text-blue-600 focus:ring-blue-500 bg-white border-gray-300 dark:bg-zinc-700 dark:border-zinc-600"
+                                checked={defectCauses.includes('Others (Lain-lain)')}
+                                onChange={(e) => {
+                                  if (e.target.checked) setDefectCauses([...defectCauses, 'Others (Lain-lain)']);
+                                  else setDefectCauses(defectCauses.filter(c => c !== 'Others (Lain-lain)'));
+                                }}
+                                disabled={!selectedFeatureId || isSubmitting}
+                              />
+                              <span className="text-sm text-gray-700 dark:text-gray-300">Others (Lain-lain)</span>
+                            </label>
+                          </div>
+                          {defectCauses.includes('Others (Lain-lain)') && (
+                            <input 
+                              type="text" 
+                              required 
+                              placeholder="Specify other defect cause..."
+                              value={otherDefectCause}
+                              onChange={(e) => setOtherDefectCause(e.target.value)}
+                              disabled={!selectedFeatureId || isSubmitting}
+                              className="mt-2 block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-sm"
+                            />
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Defect Status *</label>
+                            <select
+                              required disabled={!selectedFeatureId || isSubmitting} value={defectStatus} onChange={(e) => setDefectStatus(e.target.value)}
+                              className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
+                            >
+                              <option value="">-- Select Status --</option>
+                              <option value="Ongoing">Ongoing (Dalam Tindakan)</option>
+                              <option value="Completed">Completed (Selesai)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Additional Notes (Optional)</label>
+                          <textarea
+                            rows={2} disabled={!selectedFeatureId || isSubmitting} value={defectNotes} onChange={(e) => setDefectNotes(e.target.value)}
+                            className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 resize-none"
+                            placeholder="E.g., Temporary patching done, pending permanent premix..."
                           />
                         </div>
                       </div>

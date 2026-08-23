@@ -1,28 +1,28 @@
 import { useState, useMemo } from 'react';
 import { Search, Filter, Navigation, Tent, Droplets, MapPin } from 'lucide-react';
 
-const OverlayBox = ({ title, icon: Icon, items, type, onFeatureSelect }) => {
+const OverlayBox = ({ title, icon: Icon, items, type, onFeatureSelect, filterKey = 'status' }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [activeFilter, setActiveFilter] = useState('All');
 
-  const uniqueStatuses = useMemo(() => {
-    const statuses = new Set(items.map(i => i.status).filter(Boolean));
-    return Array.from(statuses);
-  }, [items]);
+  const uniqueFilterValues = useMemo(() => {
+    const values = new Set(items.map(i => i[filterKey]).filter(Boolean));
+    return Array.from(values);
+  }, [items, filterKey]);
 
   const filteredItems = useMemo(() => {
     let result = items;
-    if (statusFilter !== 'All') {
-      result = result.filter(i => i.status === statusFilter);
+    if (activeFilter !== 'All') {
+      result = result.filter(i => i[filterKey] === activeFilter);
     }
     if (searchQuery) {
       result = result.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
     }
     return result;
-  }, [items, searchQuery, statusFilter]);
+  }, [items, searchQuery, activeFilter, filterKey]);
 
   return (
     <div 
@@ -74,21 +74,21 @@ const OverlayBox = ({ title, icon: Icon, items, type, onFeatureSelect }) => {
       )}
 
       {/* Filter Bar (Collapsible) */}
-      {showFilter && uniqueStatuses.length > 0 && (
+      {showFilter && uniqueFilterValues.length > 0 && (
         <div className="px-2 py-1.5 border-b border-gray-100 dark:border-zinc-800 shrink-0 bg-gray-50 dark:bg-zinc-900/50 flex flex-wrap gap-1">
           <button 
-            onClick={() => setStatusFilter('All')} 
-            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${statusFilter === 'All' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-zinc-700 dark:text-gray-300'}`}
+            onClick={() => setActiveFilter('All')} 
+            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${activeFilter === 'All' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-zinc-700 dark:text-gray-300'}`}
           >
             All
           </button>
-          {uniqueStatuses.map(status => (
+          {uniqueFilterValues.map(val => (
              <button 
-                key={status} 
-                onClick={() => setStatusFilter(status)} 
-                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${statusFilter === status ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-zinc-700 dark:text-gray-300'}`}
+                key={val} 
+                onClick={() => setActiveFilter(val)} 
+                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${activeFilter === val ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-zinc-700 dark:text-gray-300'}`}
              >
-                {status}
+                {val}
              </button>
           ))}
         </div>
@@ -220,9 +220,10 @@ export default function MapDashboardOverlays({ roadsLogs = [], defectLogs = [], 
         ) : (
           <>
             <OverlayBox 
-              title="Completed Defects (3 Districts)" 
+              title="Completed Defects" 
               icon={MapPin} 
-              items={defectLogs.filter(log => log.status === 'Completed' && ['Johor Bahru', 'Kota Tinggi', 'Segamat'].includes(log.district)).map(log => ({
+              filterKey="district"
+              items={defectLogs.filter(log => log.status === 'Completed').map(log => ({
                 name: log.road_name,
                 district: log.district,
                 status: log.status,

@@ -10,12 +10,24 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
+  
+  // Forgot Password state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState('');
+  const [forgotError, setForgotError] = useState('');
+
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg('');
+
+    // Save remember me choice for custom storage adapter
+    window.localStorage.setItem('remember_me', rememberMe ? 'true' : 'false');
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email,
@@ -32,8 +44,26 @@ export default function Login() {
     }
   };
 
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    setForgotMessage('');
+    setForgotError('');
+
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      setForgotError(error.message);
+    } else {
+      setForgotMessage('Password reset link has been sent to your email.');
+    }
+    setForgotLoading(false);
+  };
+
   return (
-    <div className="flex w-full h-[calc(100vh-80px)] items-center justify-center">
+    <div className="flex w-full h-[calc(100vh-80px)] items-center justify-center relative">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -60,7 +90,7 @@ export default function Login() {
               </div>
             </div>
 
-            <hr className="border-gray-100 dark:border-zinc-800 my-6" />
+            <hr className="border-gray-100 dark:border-zinc-800 my-1" />
 
             {errorMsg && (
               <motion.div 
@@ -109,10 +139,15 @@ export default function Login() {
 
               <div className="flex justify-between items-center mt-2">
                 <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer hover:text-gray-900 dark:hover:text-gray-200 transition-colors">
-                  <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-white dark:bg-zinc-800 dark:border-zinc-700" />
+                  <input 
+                    type="checkbox" 
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-white dark:bg-zinc-800 dark:border-zinc-700" 
+                  />
                   Remember me
                 </label>
-                <a href="#" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 transition-colors">Forgot password?</a>
+                <button type="button" onClick={() => setShowForgotModal(true)} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 transition-colors">Forgot password?</button>
               </div>
 
               <button
@@ -129,10 +164,80 @@ export default function Login() {
                   </>
                 )}
               </button>
+
+              <div className="pt-2 text-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  For account inquiries, please contact<br/>
+                  <a href="mailto:nasrinsahiraa@gmail.com" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">nasrinsahiraa@gmail.com</a>
+                </p>
+              </div>
             </form>
           </div>
         </div>
       </motion.div>
+
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-xl shadow-2xl p-6 border border-gray-200 dark:border-zinc-800"
+          >
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Reset Password</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Enter your email address and we will send you a secure link to reset your password.
+            </p>
+
+            {forgotError && (
+              <div className="mb-4 p-2.5 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-600 dark:text-red-400">{forgotError}</p>
+              </div>
+            )}
+            
+            {forgotMessage && (
+              <div className="mb-4 p-2.5 rounded bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-900/50">
+                <p className="text-xs text-green-600 dark:text-green-400">{forgotMessage}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleForgotPassword} className="flex flex-col gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className="mt-1 w-full text-sm px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="flex gap-2 justify-end mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {forgotLoading ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    "Send Link"
+                  )}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

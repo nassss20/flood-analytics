@@ -7,7 +7,9 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import Admin from './pages/Admin';
+import ResetPassword from './pages/ResetPassword';
 import BackgroundMap from './components/BackgroundMap';
+import IdleTimer from './components/IdleTimer';
 
 // Protected Route Component wrapper
 const ProtectedRoute = ({ children }) => {
@@ -43,6 +45,7 @@ function App() {
 
   if (session && isBanned) {
     return (
+      <IdleTimer>
       <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-red-200 dark:border-red-900/30 overflow-hidden text-center p-8">
           <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -61,10 +64,12 @@ function App() {
           </button>
         </div>
       </div>
+      </IdleTimer>
     );
   }
 
   return (
+    <IdleTimer>
     <div className="min-h-screen text-gray-900 dark:text-gray-100 flex flex-col font-sans transition-colors duration-200 relative bg-transparent">
       
       <BackgroundMap />
@@ -124,6 +129,7 @@ function App() {
         <Routes>
           {/* If already logged in, redirect away from login page */}
           <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route 
             path="/dashboard" 
             element={
@@ -151,6 +157,7 @@ function App() {
         </Routes>
       </main>
     </div>
+    </IdleTimer>
   );
 }
 

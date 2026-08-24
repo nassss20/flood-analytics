@@ -632,6 +632,7 @@ export default function Dashboard() {
                       onClick={() => {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                         setSelectedFeature({ type: 'road', name: log.road_name, district: log.district, ts: Date.now() });
+                        setMapMode('flood');
                       }}
                       className="bg-white dark:bg-zinc-900 hover:bg-blue-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
                     >
@@ -712,6 +713,7 @@ export default function Dashboard() {
                       onClick={() => {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                         setSelectedFeature({ type: 'road', name: log.road_name, district: log.district, ts: Date.now() });
+                        setMapMode('defects');
                       }}
                       className="bg-white dark:bg-zinc-900 hover:bg-orange-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
                     >
@@ -802,6 +804,7 @@ export default function Dashboard() {
                       onClick={() => {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                         setSelectedFeature({ type: 'pps', name: pps.PPS_Name, ts: Date.now() });
+                        setMapMode('flood');
                       }}
                       className="bg-white dark:bg-zinc-900 hover:bg-blue-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
                     >
@@ -894,6 +897,7 @@ export default function Dashboard() {
                           onClick={() => {
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                             setSelectedFeature({ type: 'river', name: river.River_Name, ts: Date.now() });
+                            setMapMode('flood');
                           }}
                           className="bg-white dark:bg-zinc-900 hover:bg-blue-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
                         >
@@ -962,6 +966,7 @@ export default function Dashboard() {
                           onClick={() => {
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                             setSelectedFeature({ type: 'river', name: log.river_name, ts: Date.now() });
+                            setMapMode('flood');
                           }}
                           className="bg-white dark:bg-zinc-900 hover:bg-blue-50/50 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
                         >

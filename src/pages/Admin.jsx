@@ -196,8 +196,9 @@ export default function Admin() {
           await updateFeatureStatus(targetRoad.layerId, targetRoad.OBJECTID, attributesToRevert);
         }
         
-        const { error: deleteError } = await supabase.from('submission_logs').delete().eq('id', log.id);
+        const { data: deleted, error: deleteError } = await supabase.from('submission_logs').delete().eq('id', log.id).select();
         if (deleteError) throw deleteError;
+        if (!deleted || deleted.length === 0) throw new Error("Delete failed. You may not have Admin permissions.");
         
         setLogs(logs.filter(l => l.id !== log.id));
         showStatus('success', `Log deleted successfully for ${log.road_name}`);
@@ -218,21 +219,24 @@ export default function Admin() {
         }
         await updateRiverFeature(targetRiver.OBJECTID, attributesToRevert);
         
-        const { error: deleteError } = await supabase.from('river_submission_logs').delete().eq('id', log.id);
+        const { data: deleted, error: deleteError } = await supabase.from('river_submission_logs').delete().eq('id', log.id).select();
         if (deleteError) throw deleteError;
+        if (!deleted || deleted.length === 0) throw new Error("Delete failed. You may not have Admin permissions.");
         
         setRiverLogs(riverLogs.filter(l => l.id !== log.id));
         showStatus('success', `Log deleted and ArcGIS map reverted for ${log.river_name}`);
       
       } else if (activeLogTab === 'pps') {
-        const { error: deleteError } = await supabase.from('pps_supplies').delete().eq('id', log.id);
+        const { data: deleted, error: deleteError } = await supabase.from('pps_supplies').delete().eq('id', log.id).select();
         if (deleteError) throw deleteError;
+        if (!deleted || deleted.length === 0) throw new Error("Delete failed. You may not have Admin permissions.");
         
         setPpsLogs(ppsLogs.filter(l => l.id !== log.id));
         showStatus('success', `Log deleted successfully for ${log.pps_name}`);
       } else if (activeLogTab === 'defects') {
-        const { error: deleteError } = await supabase.from('road_defects_logs').delete().eq('id', log.id);
+        const { data: deleted, error: deleteError } = await supabase.from('road_defects_logs').delete().eq('id', log.id).select();
         if (deleteError) throw deleteError;
+        if (!deleted || deleted.length === 0) throw new Error("Delete failed. You may not have Admin permissions.");
         
         setDefectLogs(defectLogs.filter(l => l.id !== log.id));
         showStatus('success', `Defect log deleted successfully for ${log.road_name}`);

@@ -80,6 +80,7 @@ export default function PasswordInput({ className, onChange, onFocus, onBlur, ..
         onFocus={handleFocus}
         onBlur={handleBlur}
         onChange={handleInput}
+        autoComplete={props.autoComplete || "new-password"}
         className={`block w-full pr-12 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${className || ''}`}
       />
       

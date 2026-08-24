@@ -75,7 +75,7 @@ function MapController({ selectedFeature, layerRefs }) {
   return null;
 }
 
-export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], ppsLogs = [], riverLogs = [], selectedFeature = null, mapMode = 'flood' }) {
+export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], riverLogs = [], selectedFeature = null, mapMode = 'flood' }) {
   const layerRefs = useRef({});
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -293,9 +293,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], ppsL
   };
 
   const getPpsMarker = (feature, latlng) => {
-    const name = feature.properties.PPS_Name;
-    const ppsLog = ppsLogs?.find(log => log.pps_name === name);
-    const status = ppsLog ? ppsLog.status : feature.properties.Status;
+    const status = feature.properties.Status;
     const type = feature.properties.PPS_Type?.toLowerCase() || '';
 
     let colorClass = 'bg-gray-400';
@@ -418,15 +416,12 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], ppsL
       if (!layerRefs.current[`pps-${name}`]) layerRefs.current[`pps-${name}`] = [];
       layerRefs.current[`pps-${name}`].push(layer);
 
-      const ppsLog = ppsLogs?.find(log => log.pps_name === name);
-      const status = ppsLog ? ppsLog.status : feature.properties.Status;
-
       layer.bindPopup(`
         <div class="font-sans text-xs min-w-[150px]">
           <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
           Type: ${feature.properties.PPS_Type || 'Unknown'}<br/>
           Capacity: ${feature.properties.Capacity || 'N/A'}<br/>
-          Status: ${status}
+          Status: ${feature.properties.Status}
         </div>
       `, { className: 'custom-popup' });
 
@@ -495,7 +490,6 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], ppsL
 
         {geoData.pps && mapMode === 'flood' && (
           <GeoJSON 
-            key={`pps-layer-${mapMode}-${ppsLogs?.length}`}
             data={geoData.pps} 
             pointToLayer={getPpsMarker}
             onEachFeature={onEachPPS}

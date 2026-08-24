@@ -1,8 +1,8 @@
-# 🌊 FloodWise: Cross-Agency Flood Command Center
+# 🌊 FloodWise: Cross-Agency Flood Analytics System
 
 ![FloodWise Concept](https://img.shields.io/badge/Status-Active-brightgreen) ![React](https://img.shields.io/badge/Frontend-React.js-blue) ![Supabase](https://img.shields.io/badge/Backend-Supabase-green) ![AI](https://img.shields.io/badge/AI-Llama_3-purple)
 
-FloodWise is a real-time, interactive command center dashboard designed to unify critical disaster response data across multiple governmental agencies in Johor, Malaysia. 
+FloodWise is a real-time, interactive analytics system designed to unify critical disaster response data across multiple governmental agencies in Johor, Malaysia. 
 
 By integrating data from **JPS** (Department of Irrigation and Drainage), **JKR** (Public Works Department), and **JKM** (Social Welfare Department), FloodWise provides a single source of truth during flood crises, enhanced by an AI Intelligence Engine that synthesizes data into actionable insights.
 

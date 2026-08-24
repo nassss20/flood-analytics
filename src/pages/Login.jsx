@@ -113,6 +113,7 @@ export default function Login() {
                   <input
                     type="email"
                     required
+                    autoComplete="off"
                     className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-800/50 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     placeholder="Enter your email"
                     value={email}

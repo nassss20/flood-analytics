@@ -109,7 +109,17 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
       let responseText = result.choices?.[0]?.message?.content || "No response generated.";
       
       // Remove any `<think>...</think>` blocks which reasoning models output
-      responseText = responseText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      let thinkStart = responseText.indexOf('<think>');
+      if (thinkStart !== -1) {
+        let thinkEnd = responseText.indexOf('</think>', thinkStart);
+        if (thinkEnd !== -1) {
+          responseText = responseText.substring(0, thinkStart) + responseText.substring(thinkEnd + 8);
+        } else {
+          // If no closing tag is found, strip everything from <think> to the end
+          responseText = responseText.substring(0, thinkStart);
+        }
+      }
+      responseText = responseText.trim();
       
       if (!responseText) {
         responseText = "The AI processed the request but did not generate a final text response. Please try again.";

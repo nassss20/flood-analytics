@@ -75,7 +75,7 @@ function MapController({ selectedFeature, layerRefs }) {
   return null;
 }
 
-export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], riverLogs = [], selectedFeature = null, mapMode = 'flood' }) {
+export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], riverLogs = [], ppsData = [], selectedFeature = null, mapMode = 'flood' }) {
   const layerRefs = useRef({});
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -311,7 +311,9 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
   };
 
   const getPpsMarker = (feature, latlng) => {
-    const status = feature.properties.Status;
+    const name = feature.properties.PPS_Name;
+    const liveData = ppsData?.find(p => p.PPS_Name === name);
+    const status = liveData ? liveData.Status : feature.properties.Status;
     const type = feature.properties.PPS_Type?.toLowerCase() || '';
 
     let colorClass = 'bg-gray-400';
@@ -434,12 +436,15 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
       if (!layerRefs.current[`pps-${name}`]) layerRefs.current[`pps-${name}`] = [];
       layerRefs.current[`pps-${name}`].push(layer);
 
+      const liveData = ppsData?.find(p => p.PPS_Name === name);
+      const status = liveData ? liveData.Status : feature.properties.Status;
+      const capacity = liveData ? liveData.Capacity : feature.properties.Capacity;
+
       layer.bindPopup(`
         <div class="font-sans text-xs min-w-[150px]">
           <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
-          Type: ${feature.properties.PPS_Type || 'Unknown'}<br/>
-          Capacity: ${feature.properties.Capacity || 'N/A'}<br/>
-          Status: ${feature.properties.Status}
+          Status: ${status}<br/>
+          Capacity: ${capacity || 'N/A'}
         </div>
       `, { className: 'custom-popup' });
 
@@ -508,6 +513,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
 
         {geoData.pps && mapMode === 'flood' && (
           <GeoJSON 
+            key={`pps-layer-${ppsData?.map(p => p.Status).join('-') || geoData.pps.features.length}`}
             data={geoData.pps} 
             pointToLayer={getPpsMarker}
             onEachFeature={onEachPPS}

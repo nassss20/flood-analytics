@@ -409,7 +409,14 @@ export default function Dashboard() {
       </div>
 
       <div className="w-full flex-1 min-h-[65vh] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-lg overflow-hidden relative">
-        <ArcGISLeafletMap roadsLogs={logs} defectLogs={defectLogs} riverLogs={riverLogs} selectedFeature={selectedFeature} mapMode={mapMode} />
+        <ArcGISLeafletMap 
+          roadsLogs={logs} 
+          defectLogs={defectLogs}
+          riverLogs={riverLogs} 
+          ppsData={ppsData}
+          selectedFeature={selectedFeature} 
+          mapMode={mapMode}
+        />
         <MapDashboardOverlays
           roadsLogs={logs}
           defectLogs={defectLogs}

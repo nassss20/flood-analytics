@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldAlert, Trash2, Users, AlertTriangle, CheckCircle2, AlertCircle, User, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
-import { fetchRoads, fetchRivers, updateFeatureStatus } from '../lib/arcgisClient';
+import { fetchRoads, fetchRivers, updateFeatureStatus, updateRiverFeature } from '../lib/arcgisClient';
 
 export default function Admin() {
   const [logs, setLogs] = useState([]);
@@ -211,7 +211,7 @@ export default function Admin() {
           const prev = previousLogs[0];
           attributesToRevert = { Status: prev.status, Water_Level: prev.water_level };
         }
-        await updateFeatureStatus(targetRiver.layerId, targetRiver.OBJECTID, attributesToRevert);
+        await updateRiverFeature(targetRiver.OBJECTID, attributesToRevert);
         
         const { error: deleteError } = await supabase.from('river_submission_logs').delete().eq('id', log.id);
         if (deleteError) throw deleteError;

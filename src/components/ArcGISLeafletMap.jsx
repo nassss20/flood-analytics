@@ -157,16 +157,24 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
     Object.keys(layerRefs.current).forEach(key => {
       if (key.startsWith('road-')) {
         const name = key.replace('road-', '');
-        const roadLog = roadsLogs?.find(log => log.road_name === name);
         const layers = layerRefs.current[key];
         
         layers.forEach(layer => {
           if (!layer.feature) return;
-          const status = roadLog ? roadLog.status : (layer.feature.properties.Status || layer.feature.properties.STATUS);
-          if (status === 'Closed') closedLayers.push(layer);
-          else if (status === 'Heavy Vehicles Only') heavyLayers.push(layer);
-          else if (status === 'Pending Assessment') pendingLayers.push(layer);
-          else openLayers.push(layer);
+          
+          if (mapMode === 'defects') {
+            const defectLog = defectLogs?.find(log => log.road_name === name);
+            const status = defectLog ? defectLog.status : 'None';
+            if (status === 'Ongoing') closedLayers.push(layer); // use closedLayers as the top priority array
+            else openLayers.push(layer);
+          } else {
+            const roadLog = roadsLogs?.find(log => log.road_name === name);
+            const status = roadLog ? roadLog.status : (layer.feature.properties.Status || layer.feature.properties.STATUS);
+            if (status === 'Closed') closedLayers.push(layer);
+            else if (status === 'Heavy Vehicles Only') heavyLayers.push(layer);
+            else if (status === 'Pending Assessment') pendingLayers.push(layer);
+            else openLayers.push(layer);
+          }
         });
       }
     });
@@ -178,7 +186,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
     heavyLayers.forEach(l => l.bringToFront && l.bringToFront());
     closedLayers.forEach(l => l.bringToFront && l.bringToFront());
 
-  }, [roadsLogs, geoData.roads, mounted]);
+  }, [roadsLogs, defectLogs, geoData.roads, mapMode, mounted]);
 
   // Dynamically fetch missing district roads if they are logged
   useEffect(() => {
@@ -195,7 +203,17 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
     });
 
     const missingRoads = new Set();
+    
+    // Check missing from roadsLogs
     roadsLogs.forEach(log => {
+      if (!loadedRoadNames.has(log.road_name) && !attemptedRoads.current.has(log.road_name)) {
+        missingRoads.add(log.road_name);
+        attemptedRoads.current.add(log.road_name);
+      }
+    });
+
+    // Check missing from defectLogs
+    defectLogs.forEach(log => {
       if (!loadedRoadNames.has(log.road_name) && !attemptedRoads.current.has(log.road_name)) {
         missingRoads.add(log.road_name);
         attemptedRoads.current.add(log.road_name);
@@ -235,7 +253,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
     };
 
     fetchMissingRoads();
-  }, [roadsLogs, geoData.roads, mounted]);
+  }, [roadsLogs, defectLogs, geoData.roads, mounted]);
 
   if (!mounted) return null;
   const isDark = resolvedTheme === 'dark';

@@ -75,7 +75,7 @@ function MapController({ selectedFeature, layerRefs }) {
   return null;
 }
 
-export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], selectedFeature = null, mapMode = 'flood' }) {
+export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], ppsLogs = [], riverLogs = [], selectedFeature = null, mapMode = 'flood' }) {
   const layerRefs = useRef({});
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -242,11 +242,14 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], sele
 
   // Styling logic based on ArcGIS pitemx rules
   const getRiverStyle = (feature) => {
-    const level = feature.properties.Water_Level;
+    const name = feature.properties.River_Name;
+    const riverLog = riverLogs?.find(log => log.river_name === name);
+    const status = riverLog ? riverLog.status : feature.properties.Status;
+
     let color = '#06b6d4'; // Cyan (Safe/Normal) instead of green to look more like water
-    if (level > 34.9 && level <= 36.2) color = '#eab308'; // Yellow (Alert)
-    if (level > 36.2 && level <= 36.8) color = '#f97316'; // Orange (Warning)
-    if (level > 36.8) color = '#ef4444'; // Red (Danger)
+    if (status === 'Alert') color = '#eab308'; // Yellow
+    if (status === 'Warning') color = '#f97316'; // Orange
+    if (status === 'Danger') color = '#ef4444'; // Red
 
     // Make rivers distinct: thicker, softer opacity, and add a custom CSS class for glowing
     return { color, weight: 6, opacity: 0.6, lineCap: 'round', lineJoin: 'round', className: 'river-glow' };
@@ -290,7 +293,9 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], sele
   };
 
   const getPpsMarker = (feature, latlng) => {
-    const status = feature.properties.Status;
+    const name = feature.properties.PPS_Name;
+    const ppsLog = ppsLogs?.find(log => log.pps_name === name);
+    const status = ppsLog ? ppsLog.status : feature.properties.Status;
     const type = feature.properties.PPS_Type?.toLowerCase() || '';
 
     let colorClass = 'bg-gray-400';
@@ -332,12 +337,15 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], sele
       if (!layerRefs.current[`river-${name}`]) layerRefs.current[`river-${name}`] = [];
       layerRefs.current[`river-${name}`].push(layer);
       
+      const riverLog = riverLogs?.find(log => log.river_name === name);
+      const status = riverLog ? riverLog.status : feature.properties.Status;
+
       // Clickable popup for details
       layer.bindPopup(`
         <div class="font-sans text-xs min-w-[150px]">
           <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
           Water Level: ${feature.properties.Water_Level?.toFixed(2)}m<br/>
-          Status: ${feature.properties.Status}
+          Status: ${status}
         </div>
       `, { className: 'custom-popup' });
 
@@ -410,12 +418,15 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], sele
       if (!layerRefs.current[`pps-${name}`]) layerRefs.current[`pps-${name}`] = [];
       layerRefs.current[`pps-${name}`].push(layer);
 
+      const ppsLog = ppsLogs?.find(log => log.pps_name === name);
+      const status = ppsLog ? ppsLog.status : feature.properties.Status;
+
       layer.bindPopup(`
         <div class="font-sans text-xs min-w-[150px]">
           <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
           Type: ${feature.properties.PPS_Type || 'Unknown'}<br/>
           Capacity: ${feature.properties.Capacity || 'N/A'}<br/>
-          Status: ${feature.properties.Status}
+          Status: ${status}
         </div>
       `, { className: 'custom-popup' });
 
@@ -466,6 +477,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], sele
 
         {geoData.rivers && mapMode === 'flood' && (
           <GeoJSON 
+            key={`river-layer-${mapMode}-${riverLogs?.length}`}
             data={geoData.rivers} 
             style={getRiverStyle}
             onEachFeature={onEachRiver}
@@ -483,6 +495,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], sele
 
         {geoData.pps && mapMode === 'flood' && (
           <GeoJSON 
+            key={`pps-layer-${mapMode}-${ppsLogs?.length}`}
             data={geoData.pps} 
             pointToLayer={getPpsMarker}
             onEachFeature={onEachPPS}

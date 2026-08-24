@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldAlert, Trash2, Users, AlertTriangle, CheckCircle2, AlertCircle, User, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
-import { fetchRoads, fetchRivers, updateFeatureStatus, updateRiverFeature } from '../lib/arcgisClient';
+import { fetchRoads, fetchRivers, fetchPPS, updateFeatureStatus, updateRiverFeature } from '../lib/arcgisClient';
 
 export default function Admin() {
   const [logs, setLogs] = useState([]);
@@ -15,6 +15,7 @@ export default function Admin() {
   const [ppsLogs, setPpsLogs] = useState([]);
   const [defectLogs, setDefectLogs] = useState([]);
   const [rivers, setRivers] = useState([]);
+  const [ppsFeatures, setPpsFeatures] = useState([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState(null);
@@ -94,6 +95,8 @@ export default function Admin() {
         setRoads(arcgisRoads);
         const arcgisRivers = await fetchRivers();
         setRivers(arcgisRivers);
+        const arcgisPps = await fetchPPS();
+        setPpsFeatures(arcgisPps);
 
       } catch (err) {
         console.error("Failed to load admin data:", err);
@@ -119,7 +122,9 @@ export default function Admin() {
                          log.pps_name;
     const matchesSearch = searchTarget?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const logStatus = activeLogTab === 'pps' ? 'All' : log.status; // Disable status filter for PPS or handle differently
+    const logStatus = activeLogTab === 'pps' 
+      ? (ppsFeatures.find(p => p.PPS_Name === log.pps_name)?.Status || 'Unknown') 
+      : log.status;
     const matchesStatus = statusFilter === 'All' || logStatus === statusFilter;
     
     let matchesDate = true;
@@ -387,10 +392,35 @@ export default function Admin() {
                 className="w-full sm:w-auto px-3 py-2 text-sm border border-gray-300 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
               >
                 <option value="All">All Statuses</option>
-                <option value="Open">Open</option>
-                <option value="Open for Heavy Vehicles Only">Open for Heavy Vehicles Only</option>
-                <option value="Closed">Closed</option>
-                <option value="Pending Assessment">Pending Assessment</option>
+                {activeLogTab === 'roads' && (
+                  <>
+                    <option value="Open">Open</option>
+                    <option value="Heavy Vehicles Only">Heavy Vehicles Only</option>
+                    <option value="Closed">Closed</option>
+                    <option value="Pending Assessment">Pending Assessment</option>
+                  </>
+                )}
+                {activeLogTab === 'rivers' && (
+                  <>
+                    <option value="Normal">Normal</option>
+                    <option value="Alert">Alert</option>
+                    <option value="Warning">Warning</option>
+                    <option value="Danger">Danger</option>
+                  </>
+                )}
+                {activeLogTab === 'pps' && (
+                  <>
+                    <option value="Active">Active</option>
+                    <option value="Standby">Standby</option>
+                    <option value="Closed">Closed</option>
+                  </>
+                )}
+                {activeLogTab === 'defects' && (
+                  <>
+                    <option value="Ongoing">Ongoing</option>
+                    <option value="Completed">Completed</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="w-full sm:w-auto">
@@ -437,7 +467,11 @@ export default function Admin() {
                   <tr key={log.id} className="bg-white dark:bg-zinc-900 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">{new Date(log.created_at || log.updated_at).toLocaleString('en-MY')}</td>
                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{activeLogTab === 'roads' || activeLogTab === 'defects' ? log.road_name : activeLogTab === 'rivers' ? log.river_name : log.pps_name}</td>
-                    <td className="px-6 py-4">{activeLogTab === 'pps' ? '-' : log.status}</td>
+                    <td className="px-6 py-4">
+                      {activeLogTab === 'pps' 
+                        ? (ppsFeatures.find(p => p.PPS_Name === log.pps_name)?.Status || '-') 
+                        : log.status}
+                    </td>
                     <td className="px-6 py-4">
                       {activeLogTab === 'pps' ? (
                         <div className="flex flex-col gap-1">

@@ -489,8 +489,12 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
       >
         <ZoomControl position="bottomleft" />
         <TileLayer
-          key="voyager"
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          key={isDark ? 'dark' : 'light'}
+          url={isDark
+            ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+            : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+          }
+          attribution="&copy; Esri"
         />
         
         <MapUpdater />

@@ -126,9 +126,10 @@ export default function BackgroundMap() {
         <TileLayer
           key={isDark ? 'dark' : 'light'}
           url={isDark
-            ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-            : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+            ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+            : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
           }
+          attribution="&copy; Esri, HERE, Garmin, FAO, NOAA, USGS"
         />
 
         <MapAnimator />

@@ -36,3 +36,7 @@ CREATE POLICY "Enable delete access for authenticated users" ON public.road_defe
 
 -- Realtime replication
 ALTER PUBLICATION supabase_realtime ADD TABLE public.road_defects_logs;
+
+-- Add Metadata Overrides (Run these if the tables already exist)
+-- ALTER TABLE public.submission_logs ADD COLUMN type_of_road TEXT, ADD COLUMN route_no TEXT;
+-- ALTER TABLE public.road_defects_logs ADD COLUMN type_of_road TEXT, ADD COLUMN route_no TEXT;

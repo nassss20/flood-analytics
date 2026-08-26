@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, useMap, ZoomControl } from 'react-lea
 import L from 'leaflet';
 import { useTheme } from 'next-themes';
 import 'leaflet/dist/leaflet.css';
+import roadAttributes from '../lib/roadAttributes.json';
 
 // Fix Leaflet icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -382,6 +383,10 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
 
       if (mapMode === 'defects') {
         const defectLog = defectLogs?.find(log => log.road_name === name);
+        const roadAttr = roadAttributes[name?.toUpperCase()] || {};
+        const typeStr = defectLog?.type_of_road || roadAttr.type_of_road || 'Unknown';
+        const routeStr = defectLog?.route_no || roadAttr.route_no ? ` (${defectLog?.route_no || roadAttr.route_no})` : '';
+
         if (defectLog) {
           const types = defectLog.defect_types?.filter(t => t !== 'Others (Lain-lain)') || [];
           if (defectLog.other_defect_type) types.push(defectLog.other_defect_type);
@@ -394,6 +399,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
           layer.bindPopup(`
             <div class="font-sans text-xs min-w-[200px]">
               <strong class="block text-sm border-b border-gray-600 pb-1 mb-1 text-orange-600">${name}</strong>
+              <div class="mb-1 text-gray-500">${typeStr}${routeStr}</div>
               <div class="mb-1"><span class="font-semibold">Status:</span> ${defectLog.status || 'Ongoing'}</div>
               <div class="mb-1"><span class="font-semibold block">Types:</span> ${typesHtml}</div>
               <div><span class="font-semibold block">Causes:</span> ${causesHtml}</div>
@@ -404,12 +410,17 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
           layer.bindPopup(`
             <div class="font-sans text-xs min-w-[150px]">
               <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
+              <div class="mb-1 text-gray-500">${typeStr}${routeStr}</div>
               <div class="text-gray-500 italic">No defects reported.</div>
             </div>
           `, { className: 'custom-popup' });
         }
       } else {
         const roadLog = roadsLogs?.find(log => log.road_name === name);
+        const roadAttr = roadAttributes[name?.toUpperCase()] || {};
+        const typeStr = roadLog?.type_of_road || roadAttr.type_of_road || 'Unknown';
+        const routeStr = roadLog?.route_no || roadAttr.route_no ? ` (${roadLog?.route_no || roadAttr.route_no})` : '';
+
         const status = roadLog ? roadLog.status : (feature.properties.Status || feature.properties.STATUS);
         const depthRaw = roadLog?.depth !== undefined ? roadLog.depth : feature.properties.DEPTH;
         const depthStr = depthRaw !== null && depthRaw !== undefined ? `${parseFloat(depthRaw).toFixed(2)}m` : 'N/A';
@@ -417,6 +428,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
         layer.bindPopup(`
           <div class="font-sans text-xs min-w-[150px]">
             <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
+            <div class="mb-1 text-gray-500">${typeStr}${routeStr}</div>
             <div class="mb-1"><span class="font-semibold">Status:</span> ${status}</div>
             <div><span class="font-semibold">Water Depth:</span> ${depthStr}</div>
           </div>

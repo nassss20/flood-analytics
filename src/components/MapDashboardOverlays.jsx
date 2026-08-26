@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Search, Filter, Navigation, Tent, Droplets, MapPin } from 'lucide-react';
+import roadAttributes from '../lib/roadAttributes.json';
 
 const OverlayBox = ({ title, icon: Icon, items, type, onFeatureSelect, filterKey = 'status' }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -145,23 +146,33 @@ export default function MapDashboardOverlays({ roadsLogs = [], defectLogs = [], 
     if (mapMode === 'defects') {
       return defectLogs
         .filter(log => log.district?.toUpperCase() === district.toUpperCase() && log.status === 'Ongoing')
-        .map(log => ({
-          name: log.road_name,
-          district: log.district,
-          status: log.status || 'Ongoing',
-          colorClass: getRoadColorClass(log.status || 'Ongoing'),
-          subtitle: log.status || 'Ongoing'
-        }));
+        .map(log => {
+          const roadAttr = roadAttributes[log.road_name?.toUpperCase()] || {};
+          const typeStr = log.type_of_road || roadAttr.type_of_road || 'Unknown';
+          const routeStr = log.route_no || roadAttr.route_no ? ` (${log.route_no || roadAttr.route_no})` : '';
+          return {
+            name: log.road_name,
+            district: log.district,
+            status: log.status || 'Ongoing',
+            colorClass: getRoadColorClass(log.status || 'Ongoing'),
+            subtitle: `${typeStr}${routeStr} • ${log.status || 'Ongoing'}`
+          };
+        });
     } else {
       return roadsLogs
         .filter(log => log.district?.toUpperCase() === district.toUpperCase() && ['Closed', 'Heavy Vehicles Only', 'Pending Assessment'].includes(log.status))
-        .map(log => ({
-          name: log.road_name,
-          district: log.district,
-          status: log.status,
-          colorClass: getRoadColorClass(log.status),
-          subtitle: log.status
-        }));
+        .map(log => {
+          const roadAttr = roadAttributes[log.road_name?.toUpperCase()] || {};
+          const typeStr = log.type_of_road || roadAttr.type_of_road || 'Unknown';
+          const routeStr = log.route_no || roadAttr.route_no ? ` (${log.route_no || roadAttr.route_no})` : '';
+          return {
+            name: log.road_name,
+            district: log.district,
+            status: log.status,
+            colorClass: getRoadColorClass(log.status),
+            subtitle: `${typeStr}${routeStr} • ${log.status}`
+          };
+        });
     }
   };
 

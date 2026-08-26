@@ -9,6 +9,7 @@ const ROAD_LAYERS = [
 const PPS_LAYER = { id: 97, nameField: "PPS_Name", statusField: "Status" };
 
 import districtRoadsList from './districtRoads.json';
+import roadAttributes from './roadAttributes.json';
 
 /**
  * Fetches all roads from multiple ArcGIS Feature Layers.
@@ -79,7 +80,24 @@ export async function fetchRoads() {
       
       // Prefer standard roads with a Route_No or District over ones without if there's a duplicate
       if (!uniqueRoadsMap.has(key) || road.Route_No) {
-        uniqueRoadsMap.set(key, { ...road, Name: displayName });
+        let typeOfRoad = null;
+        let routeNo = road.Route_No || road.ROUTE_NO || road.REF || null;
+        
+        // Match from roadAttributes.json
+        const roadAttr = roadAttributes[displayName.toUpperCase()];
+        if (roadAttr) {
+            typeOfRoad = roadAttr.type_of_road;
+            if (!routeNo && roadAttr.route_no) {
+                routeNo = roadAttr.route_no;
+            }
+        }
+        
+        uniqueRoadsMap.set(key, { 
+            ...road, 
+            Name: displayName,
+            Type_of_Road: typeOfRoad,
+            Route_No: routeNo
+        });
       }
     }
 
@@ -105,7 +123,22 @@ export async function fetchRoads() {
 
       const key = `${displayName.toUpperCase()}_${(dRoad.DISTRICT || '').toUpperCase()}`;
       if (!uniqueRoadsMap.has(key)) {
-        uniqueRoadsMap.set(key, { ...dRoad, Name: displayName });
+        let typeOfRoad = null;
+        let routeNo = null;
+        
+        // Match from roadAttributes.json
+        const roadAttr = roadAttributes[displayName.toUpperCase()];
+        if (roadAttr) {
+            typeOfRoad = roadAttr.type_of_road;
+            routeNo = roadAttr.route_no;
+        }
+        
+        uniqueRoadsMap.set(key, { 
+            ...dRoad, 
+            Name: displayName,
+            Type_of_Road: typeOfRoad,
+            Route_No: routeNo
+        });
       }
     }
 

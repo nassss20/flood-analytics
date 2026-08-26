@@ -9,6 +9,7 @@ import AIAssistantWidget from "../components/AIAssistantWidget";
 import ArcGISLeafletMap from "../components/ArcGISLeafletMap";
 import MapDashboardOverlays from "../components/MapDashboardOverlays";
 import { fetchPPS, fetchRivers } from "../lib/arcgisClient";
+import roadAttributes from '../lib/roadAttributes.json';
 
 const renderSupplies = (suppliesString, colorClass) => {
   if (!suppliesString || suppliesString === '-') return <span className="text-gray-400 italic">None</span>;
@@ -651,8 +652,18 @@ export default function Dashboard() {
                           <Navigation className="w-4 h-4 text-cyan-500" />
                           {log.road_name}
                         </div>
+                        {(() => {
+                          const roadAttr = roadAttributes[log.road_name?.toUpperCase()] || {};
+                          const typeStr = log.type_of_road || roadAttr.type_of_road || 'Unknown';
+                          const routeStr = log.route_no || roadAttr.route_no ? ` (${log.route_no || roadAttr.route_no})` : '';
+                          return (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-6 font-medium">
+                              {typeStr}{routeStr}
+                            </div>
+                          );
+                        })()}
                         {log.district && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-6">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 pl-6">
                             District: {log.district}
                           </div>
                         )}
@@ -732,8 +743,18 @@ export default function Dashboard() {
                           <Navigation className="w-4 h-4 text-cyan-500" />
                           {log.road_name}
                         </div>
+                        {(() => {
+                          const roadAttr = roadAttributes[log.road_name?.toUpperCase()] || {};
+                          const typeStr = log.type_of_road || roadAttr.type_of_road || 'Unknown';
+                          const routeStr = log.route_no || roadAttr.route_no ? ` (${log.route_no || roadAttr.route_no})` : '';
+                          return (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-6 font-medium">
+                              {typeStr}{routeStr}
+                            </div>
+                          );
+                        })()}
                         {log.district && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-6">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 pl-6">
                             District: {log.district}
                           </div>
                         )}

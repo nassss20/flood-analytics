@@ -5,6 +5,7 @@ import Select from 'react-select';
 import { fetchRoads, fetchPPS, fetchRivers, updateFeatureStatus, updateRiverFeature } from '../lib/arcgisClient';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import roadAttributes from '../lib/roadAttributes.json';
 
 export default function DataEntryModal({ isOpen, onClose }) {
   const { user, canEditRoads, canEditRivers, canEditPPS } = useAuth();
@@ -27,6 +28,10 @@ export default function DataEntryModal({ isOpen, onClose }) {
   const [floodDepth, setFloodDepth] = useState('');
   const [roadStatus, setRoadStatus] = useState('');
   const [damageType, setDamageType] = useState('');
+  
+  // Form Fields - Road Metadata Overrides
+  const [typeOfRoad, setTypeOfRoad] = useState('');
+  const [routeNo, setRouteNo] = useState('');
 
   // Form Fields - River
   const [waterLevel, setWaterLevel] = useState('');
@@ -138,6 +143,8 @@ export default function DataEntryModal({ isOpen, onClose }) {
       setFloodDepth('');
       setRoadStatus('');
       setDamageType('');
+      setTypeOfRoad('');
+      setRouteNo('');
       setWaterLevel('');
       setRiverStatus('');
       setRiverNote('');
@@ -155,6 +162,9 @@ export default function DataEntryModal({ isOpen, onClose }) {
         setFloodDepth(road.DEPTH !== null && road.DEPTH !== undefined ? road.DEPTH.toString() : '');
         setRoadStatus(road.Status || '');
         setDamageType(road.DAMAGE || '');
+        const roadAttr = roadAttributes[road.Name?.toUpperCase()] || {};
+        setTypeOfRoad(roadAttr.type_of_road || '');
+        setRouteNo(roadAttr.route_no || '');
       }
     } else if (entryType === 'Road Defect') {
       const road = roads.find(r => r.isDistrictRoad ? r.Name === selectedFeatureId : `${r.layerId}_${r.OBJECTID}` === selectedFeatureId);
@@ -166,6 +176,9 @@ export default function DataEntryModal({ isOpen, onClose }) {
         setOtherDefectCause('');
         setDefectStatus('');
         setDefectNotes('');
+        const roadAttr = roadAttributes[road.Name?.toUpperCase()] || {};
+        setTypeOfRoad(roadAttr.type_of_road || '');
+        setRouteNo(roadAttr.route_no || '');
       }
     } else if (entryType === 'River') {
       const river = rivers.find(r => `${r.layerId}_${r.OBJECTID}` === selectedFeatureId);
@@ -279,6 +292,8 @@ export default function DataEntryModal({ isOpen, onClose }) {
           status: roadStatus || null,
           depth: attributes.DEPTH,
           damage: damageType || null,
+          type_of_road: typeOfRoad || null,
+          route_no: routeNo || null,
           submitted_by_name: submittedByName,
           submitted_by_email: user?.email || 'Unknown',
           user_id: user?.id
@@ -301,6 +316,8 @@ export default function DataEntryModal({ isOpen, onClose }) {
           other_defect_cause: finalOtherCause,
           status: defectStatus || null,
           notes: defectNotes || null,
+          type_of_road: typeOfRoad || null,
+          route_no: routeNo || null,
           submitted_by_name: submittedByName,
           submitted_by_email: user?.email || 'Unknown',
           user_id: user?.id
@@ -380,10 +397,12 @@ export default function DataEntryModal({ isOpen, onClose }) {
       if (selectedDistrict) {
         filtered = filtered.filter(r => r.DISTRICT?.toUpperCase() === selectedDistrict.toUpperCase());
       }
-      const rawOptions = filtered.map(road => ({
-        value: road.isDistrictRoad ? road.Name : `${road.layerId}_${road.OBJECTID}`,
-        label: `${road.Route_No ? `${road.Route_No} - ` : ''}${road.Name}`
-      }));
+      const rawOptions = filtered.map(road => {
+        return {
+          value: road.isDistrictRoad ? road.Name : `${road.layerId}_${road.OBJECTID}`,
+          label: `${road.Route_No ? `${road.Route_No} - ` : ''}${road.Name}`
+        };
+      });
       return Array.from(new Map(rawOptions.map(opt => [opt.label.trim().toLowerCase(), opt])).values())
         .sort((a, b) => a.label.localeCompare(b.label));
     } else if (entryType === 'River') {
@@ -504,6 +523,38 @@ export default function DataEntryModal({ isOpen, onClose }) {
                         />
                       </div>
                     </div>
+                    
+                    {/* Metadata Overrides */}
+                    {(entryType === 'Road' || entryType === 'Road Defect') && selectedFeatureId && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Type of Road</label>
+                          <select
+                            value={typeOfRoad}
+                            onChange={(e) => setTypeOfRoad(e.target.value)}
+                            disabled={isSubmitting}
+                            className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
+                          >
+                            <option value="">Unclassified</option>
+                            <option value="Federal Road">Federal Road</option>
+                            <option value="State Road">State Road</option>
+                            <option value="Residential">Residential</option>
+                            <option value="Others">Others</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Route No (Optional)</label>
+                          <input
+                            type="text"
+                            value={routeNo}
+                            onChange={(e) => setRouteNo(e.target.value)}
+                            disabled={isSubmitting}
+                            placeholder="e.g. FT003 or J32"
+                            className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Update Details */}

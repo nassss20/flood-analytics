@@ -492,7 +492,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
           key={isDark ? 'dark' : 'light'}
           url={isDark
             ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-            : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+            : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
           }
           attribution="&copy; Esri"
         />
